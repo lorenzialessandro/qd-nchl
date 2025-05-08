@@ -1,0 +1,20 @@
+default:
+  iterations: 100
+  map_size: [10, 10]
+  pop_size: 60
+  bounds: 
+    - [0.0, 10.0]
+    - [0.0, 10.0]
+  sigma: 0.1
+  best: True  
+
+tasks:
+  C:
+    task: CartPole-v1
+    nodes: [4, 4, 2]
+  M:
+    task: MountainCar-v0
+    nodes: [2, 8, 3]
+  L:
+    task: LunarLander-v3
+    nodes: [8, 8, 4]
