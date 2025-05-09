@@ -29,7 +29,7 @@ class MapElite():
         """
         return len(self.archive) == 0
 
-    def ask(self, best=False):
+    def ask(self):
         """
         Generate a new population of individuals.
         """
@@ -40,11 +40,7 @@ class MapElite():
 
         # If the archive is not empty, sample from the archive
         else:
-            if best:
-                positions = [max(self.archive.keys(), key=lambda x: self.archive[x][1])]
-            
-            else:
-                positions = list(self.archive.keys())
+            positions = list(self.archive.keys())
             
             # Sample random positions from the archive
             selected_indexes = self.rng.choice(len(positions), size=self.pop_size, replace=True)
@@ -119,7 +115,7 @@ class MapElite():
             fitness_map[pos] = fitness
 
         plt.figure(figsize=(10, 8))
-        sns.heatmap(fitness_map, annot=False, fmt=".2f", cmap="viridis", cbar=True)
+        sns.heatmap(fitness_map, annot=True, fmt=".2f", cmap="viridis", cbar=True)
         plt.title("Map-Elite Archive Fitness Values")
         plt.xlabel("Grid X")
         plt.ylabel("Grid Y")

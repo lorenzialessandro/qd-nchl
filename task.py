@@ -8,7 +8,7 @@ import pickle
 import json
 from multiprocessing import Pool
 
-from network import NCHL, Neuron
+from network import NCHL
 from optimizer import MapElite
 from utils import *
 
@@ -19,7 +19,7 @@ def evaluate(data):
     task = args["task"]
 
     env = gym.make(task)
-    agent = NCHL(nodes, grad=False)
+    agent = NCHL(nodes) # grad=False
     agent.set_params(params)
     
     rews = []
@@ -66,7 +66,7 @@ def launcher(config):
     history_avg_fitnesses = []
     
     for i in range(config["iterations"]):
-        candidates = archive.ask(best=config["best"]) # ask for new candidates
+        candidates = archive.ask() # ask for new candidates
         
         res = parallel_val(candidates, config)
         fitnesses = [r[0] for r in res]
@@ -79,9 +79,10 @@ def launcher(config):
         
         archive.tell(candidates, fitnesses, descriptors) # tell the archive about the new candidates
         
-    archive.visualize()
+    archive.visualize(save=True)
     
     from matplotlib import pyplot as plt
+    plt.figure(figsize=(10, 8))
     plt.plot(history_avg_fitnesses, label="avg fitness")
     plt.plot(history_best_fitnesses, label="best fitness")
     plt.legend()

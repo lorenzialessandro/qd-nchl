@@ -15,7 +15,7 @@ def load_config(config_file, task, seed):
     config = deepcopy(full_config['default'])
     config.update(full_config['tasks'][task])
     
-    nchl = NCHL(config["nodes"], grad=False)
+    nchl = NCHL(nodes=config["nodes"])
     config["seed"] = seed
     config["length"] = nchl.nparams
     config["dir"] = f"{task}_{seed}"
