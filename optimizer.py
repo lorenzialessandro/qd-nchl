@@ -4,26 +4,28 @@ import numpy as np
 import torch
 import torch.nn as nn
 import os
+import pickle
 
-class MapElite():
+class MapElites():
     """
+    Map Elites algorithm for generating a diverse set of solutions in a given search space.
     """
 
-    def __init__(self, seed, map_size, length, pop_size, bounds, dir, sigma=0.1):
-
+    def __init__(self, seed, map_size, length, pop_size, bounds, threshold, path_dir, sigma):
         self.map_size = map_size
         self.length = length
         self.pop_size = pop_size
         self.bounds = bounds
         self.sigma = sigma
-        self.dir = dir
+        self.threshold = threshold 
+        self.path_dir = path_dir
 
         self.rng = np.random.default_rng(seed)
 
         # keys are grid positions (i, j), values are (individual, fitness, descriptors)
         self.archive = {}
 
-    def _empty(self):
+    def empty(self):
         """
         Check if the archive is empty.
         """
@@ -35,7 +37,7 @@ class MapElite():
         """
 
         # If the archive is empty, generate random individuals
-        if self._empty():
+        if self.empty():
             return self.rng.uniform(-1.0, 1.0, (self.pop_size, self.length)).astype(np.float32)
 
         # If the archive is not empty, sample from the archive
@@ -100,27 +102,38 @@ class MapElite():
             position.append(pos) 
         
         return tuple(position)
-
-    def visualize(self, save=False):
-        """
-        Visualize the archive using heatmap.
-        """
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-
-        # Create a 2D array to store the fitness values
-        fitness_map = np.full(self.map_size, -200.0)
-
-        for pos, (individual, fitness, descriptor) in self.archive.items():
-            fitness_map[pos] = fitness
-
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(fitness_map, annot=True, fmt=".2f", cmap="viridis", cbar=True)
-        plt.title("Map-Elite Archive Fitness Values")
-        plt.xlabel("Grid X")
-        plt.ylabel("Grid Y")
-        if save:
-            plt.savefig(os.path.join(self.dir, "archive.png"))
-        plt.show()
-
     
+    def get_best(self):
+        """
+        Get the best individual in the archive.
+        """
+        if self.empty():
+            return None, None, None
+        
+        best_pos = max(self.archive, key=lambda pos: self.archive[pos][1])
+        return self.archive[best_pos] # individual, fitness, descriptor
+    
+    def get_best_k(self, k):
+        """
+        Get the top k individuals in the archive.
+        """
+        if self.empty():
+            return None, None, None
+        
+        best_positions = sorted(self.archive.keys(), key=lambda pos: self.archive[pos][1], reverse=True)[:k]
+        return [self.archive[pos] for pos in best_positions] # list of (individual, fitness, descriptor)
+    
+    def save(self):
+        """
+        Save the archive to a file.
+        """
+        with open(os.path.join(self.path_dir, "archive.pkl"), "wb") as f:
+            pickle.dump(self.archive, f)
+            
+    @classmethod
+    def load(cls, path_dir=None):
+        """
+        Load the archive from a file.
+        """
+        with open(os.path.join(self.path_dir, "archive.pkl"), "rb") as f:
+            return pickle.load(f)

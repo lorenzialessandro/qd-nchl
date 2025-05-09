@@ -1,19 +1,29 @@
 default:
-  iterations: 100
+  iterations: 500
   map_size: [10, 10]
   pop_size: 50
   bounds: 
-    - [0.0, 10.0]
-    - [0.0, 10.0]
-  sigma: 0.1  
+    - [0.0, 1.0]
+    - [0.0, 0.1]
+  sigma: 0.2
+  threshold: 0  
 
 tasks:
   C:
     task: CartPole-v1
     nodes: [4, 4, 2]
+    threshold: 500
   M:
     task: MountainCar-v0
     nodes: [2, 8, 3]
+    threshold: -110
   L:
     task: LunarLander-v3
     nodes: [8, 8, 4]
+    threshold: 200
+  A:
+    task: Ant-v5
+    nodes: [105, 20, 8]
+    bounds: 
+      - [0.0, 1.0]
+      - [0.0, 0.6]

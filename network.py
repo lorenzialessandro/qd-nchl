@@ -1,7 +1,8 @@
-
 import numpy as np
 import torch
 import torch.nn as nn
+import pickle
+import os
 
 
 class Neuron:
@@ -12,21 +13,21 @@ class Neuron:
         self.neuron_id = neuron_id
         self.device = device
 
-        # Hebbian rule parameters initialized at random
+        # Hebbian rule parameters initialized at random - converted to float32
         self.pre_factor = torch.tensor(
-            np.random.uniform(-1.0, 1.0), device=device)
+            np.random.uniform(-1.0, 1.0), device=device, dtype=torch.float32)
         self.post_factor = torch.tensor(
-            np.random.uniform(-1.0, 1.0), device=device)
+            np.random.uniform(-1.0, 1.0), device=device, dtype=torch.float32)
         self.correlation = torch.tensor(
-            np.random.uniform(-1.0, 1.0), device=device)
+            np.random.uniform(-1.0, 1.0), device=device, dtype=torch.float32)
         self.decorrelation = torch.tensor(
-            np.random.uniform(-1.0, 1.0), device=device)
-        self.eta = torch.tensor(np.random.uniform(0, 1.0), device=device)
+            np.random.uniform(-1.0, 1.0), device=device, dtype=torch.float32)
+        self.eta = torch.tensor(np.random.uniform(0, 1.0), device=device, dtype=torch.float32)
 
         self.params = None
 
         # Current activation value of the neuron
-        self.activation = torch.tensor(0.0, device=device)
+        self.activation = torch.tensor(0.0, device=device, dtype=torch.float32)
 
         # Store activations and weight changes for the neuron for descriptors
         self.activations = []
@@ -51,30 +52,30 @@ class Neuron:
 
     def set_hebbian_params(self, pre, post, corr, decorr):
         """Set the Hebbian learning parameters for this neuron."""
-        self.pre_factor = pre.clone().detach().to(self.device) if isinstance(
-            pre, torch.Tensor) else torch.tensor(pre, device=self.device)
-        self.post_factor = post.clone().detach().to(self.device) if isinstance(
-            post, torch.Tensor) else torch.tensor(post, device=self.device)
-        self.correlation = corr.clone().detach().to(self.device) if isinstance(
-            corr, torch.Tensor) else torch.tensor(corr, device=self.device)
-        self.decorrelation = decorr.clone().detach().to(self.device) if isinstance(
-            decorr, torch.Tensor) else torch.tensor(decorr, device=self.device)
+        self.pre_factor = pre.clone().detach().to(self.device).float() if isinstance(
+            pre, torch.Tensor) else torch.tensor(pre, device=self.device, dtype=torch.float32)
+        self.post_factor = post.clone().detach().to(self.device).float() if isinstance(
+            post, torch.Tensor) else torch.tensor(post, device=self.device, dtype=torch.float32)
+        self.correlation = corr.clone().detach().to(self.device).float() if isinstance(
+            corr, torch.Tensor) else torch.tensor(corr, device=self.device, dtype=torch.float32)
+        self.decorrelation = decorr.clone().detach().to(self.device).float() if isinstance(
+            decorr, torch.Tensor) else torch.tensor(decorr, device=self.device, dtype=torch.float32)
 
     def set_eta(self, eta):
         """Set the learning rate for this neuron."""
-        self.eta = eta.clone().detach().to(self.device) if isinstance(
-            eta, torch.Tensor) else torch.tensor(eta, device=self.device)
+        self.eta = eta.clone().detach().to(self.device).float() if isinstance(
+            eta, torch.Tensor) else torch.tensor(eta, device=self.device, dtype=torch.float32)
 
     def set_activation(self, activation):
         """Set the current activation value of the neuron."""
-        self.activation = activation.to(self.device)
+        self.activation = activation.to(self.device).float()
         self.add_activation(activation)
 
     def get_hebbian_terms(self):
         return (
             (self.pre_factor * self.activation).to(self.device),
             (self.post_factor * self.activation).to(self.device),
-            torch.tensor(1.0, device=self.device) if self.correlation == 1. else (
+            torch.tensor(1.0, device=self.device, dtype=torch.float32) if self.correlation == 1. else (
                 self.correlation * self.activation).to(self.device),
             self.decorrelation.to(self.device)
         )
@@ -110,9 +111,9 @@ class Neuron:
         # Process each key in the state
         for key, value in state.items():
             if key.endswith('_list'):
-                # Convert lists back to tensors
+                # Convert lists back to tensors with float32 dtype
                 tensor_key = key[:-5]  # Remove '_list' suffix
-                self.__dict__[tensor_key] = torch.tensor(value, device="cpu")
+                self.__dict__[tensor_key] = torch.tensor(value, device="cpu", dtype=torch.float32)
             else:
                 self.__dict__[key] = value
 
@@ -128,11 +129,11 @@ class NCHL(nn.Module):
     def __init__(self, nodes: list, params=None, population=None, grad=False, device="cpu", init=None):
 
         super(NCHL, self).__init__()
-        self.float()
+        self.float() 
 
         self.device = device
         self.grad = grad
-        self.nodes = torch.tensor(nodes, device=device)
+        self.nodes = torch.tensor(nodes, device=device, dtype=torch.float32)
         self.nweights = sum([self.nodes[i] * self.nodes[i + 1]
                             for i in range(len(self.nodes) - 1)])
 
@@ -143,7 +144,6 @@ class NCHL(nn.Module):
         # Create network layers
         self.network = self._initialize_network(nodes, init)
 
-        # self.double()
         self.to(device)
 
         self.nparams = int(sum(self.nodes) * 5 - self.nodes[0] - self.nodes[-1])
@@ -184,14 +184,13 @@ class NCHL(nn.Module):
         network = []
         for i in range(len(nodes) - 1):
             layer = nn.Linear(nodes[i], nodes[i + 1], bias=False)
-            layer
+            layer.float()  
 
             if init is None:
                 nn.init.xavier_uniform_(layer.weight.data, 0.5)
             else:
                 self._initialize_weights(layer, init)
 
-            # layer.weight.data = layer.weight.data.double()
             layer.to(self.device)
             network.append(layer)
         return network
@@ -214,7 +213,7 @@ class NCHL(nn.Module):
 
     def forward(self, inputs):
         with torch.no_grad():
-            x = inputs.to(self.device)
+            x = inputs.to(self.device).float()  
             if x.dim() == 1:
                 x = x.unsqueeze(0)
 
@@ -302,67 +301,18 @@ class NCHL(nn.Module):
         if isinstance(weights[0], torch.Tensor):
             for i, weight in enumerate(weights):
                 self.network[i].weight = nn.Parameter(
-                    weight.to(self.device), requires_grad=self.grad)
+                    weight.to(self.device).float(), requires_grad=self.grad)
         else:
             tmp = self.get_weights()
             start = 0
             for i, l in enumerate(tmp):
                 size = l.size()[0] * l.size()[1] + start
-                params = torch.tensor(weights[start:size], device=self.device)
+                params = torch.tensor(weights[start:size], device=self.device, dtype=torch.float32)
                 start = size
                 self.network[i].weight = nn.Parameter(
                     torch.reshape(params, (l.size()[0], l.size()[1])),
                     requires_grad=self.grad
                 )
-
-    # def set_params(self, params: list):
-    #     """Set learning rates (etas) and Hebbian rules for all neurons."""
-    #     etas = params[:sum(self.nodes)]
-    #     hrules = params[sum(self.nodes):]
-
-    #     # Set learning rates for each neuron
-    #     start = 0
-    #     for layer in self.neurons:
-    #         for neuron in layer:
-    #             neuron.set_eta(etas[start])
-    #             start += 1
-
-    #     # Set Hebbian rules
-    #     start = 0
-    #     # Input layer (3 parameters per neuron)
-    #     for neuron in self.neurons[0]:
-    #         rules = hrules[start:start + 3]
-    #         neuron.set_hebbian_params(
-    #             pre=rules[0],
-    #             post=0.0,  # Input layer has no post factor
-    #             corr=rules[1],
-    #             decorr=rules[2]
-    #         )
-    #         start += 3
-
-    #     # Hidden layers (4 parameters per neuron)
-    #     for layer in self.neurons[1:-1]:
-    #         for neuron in layer:
-    #             rules = hrules[start:start + 4]
-    #             neuron.set_hebbian_params(
-    #                 pre=rules[0],
-    #                 post=rules[1],
-    #                 corr=rules[2],
-    #                 decorr=rules[3]
-    #             )
-    #             start += 4
-
-    #     # Output layer (3 parameters per neuron)
-    #     for neuron in self.neurons[-1]:
-    #         rules = hrules[start:start + 3]
-    #         neuron.set_hebbian_params(
-    #             pre=0.0,  # Output layer has no pre factor
-    #             post=rules[0],
-    #             corr=rules[1],
-    #             decorr=rules[2]
-    #         )
-    #         start += 3
-
 
     def set_params(self, params: list):
         """Set learning rates (etas) and Hebbian rules for all neurons."""
@@ -402,6 +352,45 @@ class NCHL(nn.Module):
             neuron.set_hebbian_params(pre=0.0, post=post, corr=corr, decorr=decorr)
             neuron.set_eta(eta)
             start += 4
+
+    def get_descriptors(self):
+        # 1. Activation Diversity Descriptor 
+        # Standard deviation of activation patterns across neurons (where pattern = mean of each neuron's activation history)
+        act_pattern = []
+        for neuron in self.all_neurons:
+            if neuron.activations:
+                act_mean = np.mean(neuron.activations)
+                act_pattern.append(act_mean)
+        # Standard deviation of the mean activation patterns            
+        act_diversity = np.std(act_pattern) if len(act_pattern) > 0 else 0.0
+        
+        # 2. Weight Change Diversity Descriptor
+        # Standard deviation of weight change magnitudes across neurons
+        weight_changes = []
+        for neuron in self.all_neurons:
+            if neuron.weight_changes:
+                weight_change = np.mean(np.abs(neuron.weight_changes))
+                weight_changes.append(weight_change)
+                
+        # Standard deviation of the mean weight changes
+        weight_diversity = np.std(weight_changes) if len(weight_changes) > 0 else 0.0
+        
+        return act_diversity, weight_diversity
+    
+    def save(self, path_dir=None):
+        """
+        Save the network to a file.
+        """
+        with open(os.path.join(path_dir, "best_nchl.pkl"), "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, path_dir=None):
+        """
+        Load the network from a file.
+        """
+        with open(os.path.join(path_dir, "best_nchl.pkl"), "rb") as f:
+            return pickle.load(f)
         
     def __getstate__(self):
         """Return state values to be pickled."""
@@ -409,7 +398,7 @@ class NCHL(nn.Module):
             'nodes': self.nodes.tolist() if isinstance(self.nodes, torch.Tensor) else self.nodes,
             'nweights': self.nweights,
             'grad': self.grad,
-            'device': 'cpu',  # Always serialize with CPU device
+            'device': 'cpu', 
             'nparams': self.nparams
         }
 
@@ -441,10 +430,10 @@ class NCHL(nn.Module):
         super(NCHL, self).__init__()
 
         # Restore basic attributes
-        self.nodes = torch.tensor(state['nodes'], device='cpu')
+        self.nodes = torch.tensor(state['nodes'], device='cpu', dtype=torch.float32)
         self.nweights = state['nweights']
         self.grad = state['grad']
-        self.device = 'cpu'  # Start on CPU, can be moved later
+        self.device = 'cpu' 
         self.nparams = state['nparams']
 
         # Reconstruct neurons
@@ -466,29 +455,11 @@ class NCHL(nn.Module):
         self.network = []
         for i in range(len(self.nodes) - 1):
             layer = nn.Linear(self.nodes[i], self.nodes[i + 1], bias=False)
-            # layer.double()
+            layer.float()  
             layer.to('cpu')
-            weights = torch.tensor(state['weights'][i], device='cpu')
+            weights = torch.tensor(state['weights'][i], device='cpu', dtype=torch.float32)
             layer.weight = nn.Parameter(weights, requires_grad=self.grad)
             self.network.append(layer)
 
-        # self.double()
-        self.to('cpu')  # Start on CPU
-
-    def get_descriptors(self):
-        weights = [w.detach().cpu().numpy() for w in self.get_weights()]
-        all_weights = np.concatenate([w.flatten() for w in weights])
-        weights_std = np.std(all_weights)
-        weights_std = (weights_std - np.min(all_weights)) / \
-            (np.max(all_weights) - np.min(all_weights)) * 10
-
-        activations = []
-        for neuron in self.all_neurons:
-            activations.append(neuron.activations)
-
-        activations = np.concatenate(activations)
-        activations_std = np.std(activations)
-        activations_std = (activations_std - np.min(activations)) / \
-            (np.max(activations) - np.min(activations)) * 10
-
-        return weights_std, activations_std
+        self.float() 
+        self.to('cpu')  
