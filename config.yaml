@@ -1,12 +1,11 @@
 default:
   iterations: 100
   map_size: [10, 10]
-  pop_size: 60
+  pop_size: 50
   bounds: 
     - [0.0, 10.0]
     - [0.0, 10.0]
-  sigma: 0.1
-  best: True  
+  sigma: 0.1  
 
 tasks:
   C:
