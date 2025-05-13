@@ -36,8 +36,8 @@ def evaluate(data):
     max_steps = args.get("max_steps", 1000)  # Default max steps
     
     # Early stopping conditions for Ant environment
-    consecutive_negative_rewards = 0
-    negative_reward_threshold = args.get("negative_reward_threshold", 30)
+    # consecutive_negative_rewards = 0
+    # negative_reward_threshold = args.get("negative_reward_threshold", 30)
 
     while not (done or truncated) and step_count < max_steps:
         input_tensor = torch.tensor(state, dtype=torch.float32)
@@ -68,20 +68,20 @@ def evaluate(data):
         step_count += 1
         
         # Early stopping for Ant to prevent wasting computation on poor solutions
-        if "Ant" in task:
-            if reward < 0:
-                consecutive_negative_rewards += 1
-                if consecutive_negative_rewards > negative_reward_threshold:
-                    break
-            else:
-                consecutive_negative_rewards = 0
+        # if "Ant" in task:
+        #     if reward < 0:
+        #         consecutive_negative_rewards += 1
+        #         if consecutive_negative_rewards > negative_reward_threshold:
+        #             break
+        #     else:
+        #         consecutive_negative_rewards = 0
     
     env.close()
     
     # Compute descriptors
     act_diversity, weight_diversity = agent.get_descriptors()
     
-    return rew_ep, (act_diversity, weight_diversity), agent
+    return rew_ep, (act_diversity, weight_diversity) #, agent
 
 def parallel_val(candidates, args):
     with Pool() as p:
@@ -114,6 +114,8 @@ def launcher(config):
     history_avg_fitnesses = []
     logs = []
     
+    global_best_fitness = float("-inf")
+    
     for i in range(config["iterations"]):
         candidates = archive.ask() # ask for new candidates
         
@@ -122,26 +124,29 @@ def launcher(config):
         descriptors = [r[1] for r in res]
         # agents = [r[2] for r in res]
         
+        archive.tell(candidates, fitnesses, descriptors) # tell the archive about the new candidates
+        
         # best_idx = np.argmax(fitnesses)
         # best_agent = agents[best_idx]
         
         # best_agent.save(path_dir=path_pkl, model_name=f"{i}_{fitnesses[best_idx]}.pkl")
         
+        global_best_fitness = max(global_best_fitness, archive.best_fitness)
+        
         log = "iteration " + str(i) + "  " + str(max(fitnesses)) + "  " + str(np.mean(fitnesses))
         if config["wandb"]:
-            wandb.log({"iteration": i, "max_fitness": max(fitnesses), "avg_fitness": np.mean(fitnesses)})
+            wandb.log({"iteration": i, "max_fitness": max(fitnesses), "avg_fitness": np.mean(fitnesses), "global_best_fitness": global_best_fitness})
         history_best_fitnesses.append(max(fitnesses))
         history_avg_fitnesses.append(np.mean(fitnesses))
         print(log)
         logs.append(log)
         
-        archive.tell(candidates, fitnesses, descriptors) # tell the archive about the new candidates
         
         if i % 50 == 0:
             path_it = f"{config['path_dir']}/{i}"
             os.makedirs(path_it, exist_ok=True)
-            visualize_archive(archive, path_dir=path_it, annot=True)
-            plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=path_it)
+            visualize_archive(archive, path_dir=path_it, cmap="Greens", annot=False, high=False)
+            # plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=path_it)
             
       
     # Get the best individual from the archive  
@@ -161,24 +166,24 @@ def launcher(config):
     plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=config["path_dir"]) 
     
     # Remove all the pkl generated apart from the best one
-    pkl_path = config["path_dir"] + "/pkl"
-    best_model_name = None
-    best_fitness = -np.inf
-    for file in os.listdir(pkl_path):
-        if file.endswith(".pkl"):
-            try:
-                iteration, fitness = map(float, file[:-4].split("_")) 
-                if fitness > best_fitness:
-                    best_fitness = fitness
-                    best_model_name = file
-            except ValueError:
-                continue
-    print(f"Best model name: {best_model_name}")
-    for file in os.listdir(pkl_path):
-        if file.endswith(".pkl") and file != best_model_name:
-            os.remove(os.path.join(pkl_path, file))
-    # Save the best model in the main directory
-    best_net.save(path_dir=config["path_dir"], model_name=best_model_name)
+    # pkl_path = config["path_dir"] + "/pkl"
+    # best_model_name = None
+    # best_fitness = -np.inf
+    # for file in os.listdir(pkl_path):
+    #     if file.endswith(".pkl"):
+    #         try:
+    #             iteration, fitness = map(float, file[:-4].split("_")) 
+    #             if fitness > best_fitness:
+    #                 best_fitness = fitness
+    #                 best_model_name = file
+    #         except ValueError:
+    #             continue
+    # print(f"Best model name: {best_model_name}")
+    # for file in os.listdir(pkl_path):
+    #     if file.endswith(".pkl") and file != best_model_name:
+    #         os.remove(os.path.join(pkl_path, file))
+    # # Save the best model in the main directory
+    # best_net.save(path_dir=config["path_dir"], model_name=best_model_name)
     
     if config["wandb"]:
         wandb.finish()

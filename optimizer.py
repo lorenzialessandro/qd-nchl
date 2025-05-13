@@ -26,7 +26,7 @@ class MapElites():
 
         # Archive parameters
         self.use_elitism = True
-        self.use_crossover = True
+        self.use_crossover = False
         self.crossover_rate = 0.3
         
         # Initialization strategy
@@ -34,7 +34,7 @@ class MapElites():
         
         # Adaptive mutation parameters
         self.min_sigma = 0.01
-        self.max_sigma = 0.1
+        self.max_sigma = 0.3
         self.sigma_decay = 0.99
         self.use_adaptive_mutation = True
         
@@ -77,7 +77,7 @@ class MapElites():
             positions = list(self.archive.keys())
             
             # Determine how many individuals to generate from each method
-            num_elites = int(self.pop_size * 0.3) if self.use_elitism else 0
+            num_elites = int(self.pop_size * 0.1) if self.use_elitism else 0
             num_crossover = int(self.pop_size * self.crossover_rate) if self.use_crossover else 0 
             num_mutation = self.pop_size - num_elites - num_crossover
             
@@ -87,19 +87,20 @@ class MapElites():
             if num_elites > 0:
                 # Sort positions by fitness
                 sorted_positions = sorted(positions, 
-                                         key=lambda pos: self.archive[pos][1], 
-                                         reverse=True)
+                                        key=lambda pos: self.archive[pos][1], 
+                                        reverse=True)
                 
-                # Select top elite individuals
-                elites = [self.archive[pos][0] for pos in sorted_positions[:num_elites]]
+                # Select top elite individuals (handle case where there are fewer positions than num_elites)
+                num_elites_actual = min(num_elites, len(sorted_positions))
+                elites = [self.archive[pos][0] for pos in sorted_positions[:num_elites_actual]]
                 offspring.extend(elites)
             
             # 2. Crossover individuals
-            if num_crossover > 0:
+            if num_crossover > 0 and len(positions) >= 2:  # Need at least 2 parents for crossover
                 for _ in range(num_crossover):
                     # Select two parents via tournament selection
-                    parent1_pos = self._tournament_selection(positions, 3)
-                    parent2_pos = self._tournament_selection(positions, 3)
+                    parent1_pos = self._tournament_selection(positions, min(3, len(positions)))
+                    parent2_pos = self._tournament_selection(positions, min(3, len(positions)))
                     
                     parent1 = self.archive[parent1_pos][0]
                     parent2 = self.archive[parent2_pos][0]
@@ -109,7 +110,7 @@ class MapElites():
                     offspring.append(child)
             
             # 3. Mutation individuals
-            if num_mutation > 0:
+            if num_mutation > 0 and len(positions) > 0:  # Need at least one parent for mutation
                 # Sample random positions from the archive with fitness-proportionate selection
                 selected_positions = self._sample_archive_positions(positions, num_mutation)
                 
@@ -120,13 +121,25 @@ class MapElites():
                 mutated = self._mutate(parents)
                 offspring.extend(mutated)
             
-            # 4. Always include the best individual found so far
-            if self.best_individual is not None and self.use_elitism:
-                # Replace a random non-elite individual
-                if len(offspring) > 0:
-                    replace_idx = num_elites + self.rng.integers(0, len(offspring) - num_elites)
+            # 4. Always include the best individual found so far (if there's room for it)
+            if self.best_individual is not None and self.use_elitism and len(offspring) > 0:
+                # Calculate a valid replace_idx
+                if len(offspring) <= num_elites:  # All offspring are elites or we have few offspring
+                    # Replace a random individual
+                    replace_idx = self.rng.integers(0, len(offspring))
+                else:
+                    # Replace a random non-elite individual
+                    non_elite_count = len(offspring) - num_elites
+                    replace_idx = num_elites + self.rng.integers(0, non_elite_count)
+                
+                # Double-check index bounds before assignment
+                if 0 <= replace_idx < len(offspring):
                     offspring[replace_idx] = self.best_individual
             
+            # If we somehow ended up with no offspring (very rare edge case), generate random ones
+            if not offspring:
+                return np.array([self.initialize_individual() for _ in range(self.pop_size)])
+                
             return np.array(offspring)
     
     def _tournament_selection(self, positions, tournament_size):

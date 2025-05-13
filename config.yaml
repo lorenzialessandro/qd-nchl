@@ -1,5 +1,5 @@
 default:
-  iterations: 1000
+  iterations: 500
   map_size: [10, 10]
   pop_size: 100
   bounds: 
@@ -22,9 +22,21 @@ tasks:
     task: LunarLander-v3
     nodes: [8, 8, 4]
     threshold: 200
+  B:
+    task: BipedalWalker-v3
+    nodes: [24, 32, 16, 4]
+    map_size: [20, 20]      
+    pop_size: 200           
+    sigma: 0.2              
+    bounds:                 
+      - [0.0, 1.0]
+      - [0.0, 0.2]
   A:
     task: Ant-v5
     nodes: [105, 64, 8]
     bounds: 
       - [0.0, 1.0]
       - [0.0, 0.6]
+    iterations: 500
+    pop_size: 500
+    max_steps: 2000
