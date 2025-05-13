@@ -4,7 +4,6 @@ import torch.nn as nn
 import pickle
 import os
 
-
 class Neuron:
     """
     Neuron class representing a single neuron (the Hebbian rule) in the network.
@@ -377,19 +376,19 @@ class NCHL(nn.Module):
         
         return act_diversity, weight_diversity
     
-    def save(self, path_dir=None):
+    def save(self, path_dir=None, model_name="best_nchl.pkl"):
         """
         Save the network to a file.
         """
-        with open(os.path.join(path_dir, "best_nchl.pkl"), "wb") as f:
+        with open(os.path.join(path_dir, model_name), "wb") as f:
             pickle.dump(self, f)
 
     @classmethod
-    def load(cls, path_dir=None):
+    def load(cls, path_dir=None, model_name="best_nchl.pkl"):
         """
         Load the network from a file.
         """
-        with open(os.path.join(path_dir, "best_nchl.pkl"), "rb") as f:
+        with open(os.path.join(path_dir, model_name), "rb") as f:
             return pickle.load(f)
         
     def __getstate__(self):
@@ -454,7 +453,7 @@ class NCHL(nn.Module):
         # Reconstruct network layers
         self.network = []
         for i in range(len(self.nodes) - 1):
-            layer = nn.Linear(self.nodes[i], self.nodes[i + 1], bias=False)
+            layer = nn.Linear(int(self.nodes[i]), int(self.nodes[i + 1]), bias=False)
             layer.float()  
             layer.to('cpu')
             weights = torch.tensor(state['weights'][i], device='cpu', dtype=torch.float32)

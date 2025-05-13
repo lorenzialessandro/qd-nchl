@@ -31,10 +31,20 @@ def load_config(config_file, task, seed):
     
     return config
 
+# - 
+# save log functions
+def save_log(logs, path_dir):
+    """
+    Save the logs to a file.
+    """
+    with open(os.path.join(path_dir, "log.txt"), 'w') as f:
+        for log in logs:
+            f.write(log + "\n")
+
 # -
 # plotting functions
 
-def visualize_archive(map_elites, cmap="viridis", annot=True, high=False, save=True): 
+def visualize_archive(map_elites, cmap="viridis", annot=True, high=False, path_dir=None):
     """
     Visualize the archive using heatmap with actual descriptor values on axes.
     """
@@ -82,14 +92,12 @@ def visualize_archive(map_elites, cmap="viridis", annot=True, high=False, save=T
     plt.xlabel("std mean neuron activations") 
     plt.ylabel("std mean neuron weight changes")
     
-    # Adjust layout to prevent label cutoff
     plt.tight_layout()
-    
-    if save:
-        plt.savefig(os.path.join(map_elites.path_dir, "archive.png"), dpi=300, bbox_inches='tight')
+    path_dir = path_dir if path_dir else map_elites.path_dir
+    plt.savefig(os.path.join(path_dir, "archive.png"), dpi=300, bbox_inches='tight')
     plt.close()
        
-def plot_history(avg_fitnesses, best_fitnesses, path_dir, save=True):
+def plot_history(avg_fitnesses, best_fitnesses, path_dir):
     """
     Plot the history of fitness values.
     """
@@ -100,8 +108,7 @@ def plot_history(avg_fitnesses, best_fitnesses, path_dir, save=True):
     plt.title("Fitness over generations")
     plt.xlabel("Generation")
     plt.ylabel("Fitness")
-    if save:
-        plt.savefig(os.path.join(path_dir, "fitness.png"))
+    plt.savefig(os.path.join(path_dir, "fitness.png"))
     plt.close()
     
     

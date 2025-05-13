@@ -1,12 +1,13 @@
 default:
-  iterations: 500
+  iterations: 1000
   map_size: [10, 10]
-  pop_size: 50
+  pop_size: 100
   bounds: 
     - [0.0, 1.0]
     - [0.0, 0.1]
-  sigma: 0.2
+  sigma: 0.1
   threshold: 0  
+  wandb: True
 
 tasks:
   C:
@@ -23,7 +24,7 @@ tasks:
     threshold: 200
   A:
     task: Ant-v5
-    nodes: [105, 20, 8]
+    nodes: [105, 64, 8]
     bounds: 
       - [0.0, 1.0]
       - [0.0, 0.6]
