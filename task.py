@@ -81,7 +81,7 @@ def evaluate(data):
     # Compute descriptors
     act_diversity, weight_diversity = agent.get_descriptors()
     
-    return rew_ep, (act_diversity, weight_diversity) #, agent
+    return rew_ep, (act_diversity, weight_diversity), agent
 
 def parallel_val(candidates, args):
     with Pool() as p:
@@ -90,11 +90,11 @@ def parallel_val(candidates, args):
 def launcher(config):
     print(config)
     if config["wandb"]:
-        wb = wandb.init(project="qd-nchl", name=f"{config['task']}_{config['seed']}", config=config)
+        wb = wandb.init(project="qd-nchl-runs", name=f"{config['task']}_{config['seed']}", config=config)
         
     os.makedirs(config["path_dir"], exist_ok=True)
-    path_pkl = f"{config['path_dir']}/pkl"
-    os.makedirs(path_pkl, exist_ok=True)
+    # path_pkl = f"{config['path_dir']}/pkl"
+    # os.makedirs(path_pkl, exist_ok=True)
     
     # Extract MapElites parameters from the config
     map_elites_params = {
@@ -105,7 +105,11 @@ def launcher(config):
         'bounds': config['bounds'],
         'threshold': config['threshold'],
         'path_dir': config['path_dir'],
-        'sigma': config['sigma']
+        'sigma': config['sigma'],
+        'use_elitism': config['use_elitism'],
+        'use_crossover': config['use_crossover'],
+        'use_adaptive_mutation': config['use_adaptive_mutation'],
+        'use_prob_sampling': config['use_prob_sampling'],
     }
 
     archive = MapElites(**map_elites_params)
@@ -122,30 +126,31 @@ def launcher(config):
         res = parallel_val(candidates, config)
         fitnesses = [r[0] for r in res]
         descriptors = [r[1] for r in res]
-        # agents = [r[2] for r in res]
+        agents = [r[2] for r in res]
         
         archive.tell(candidates, fitnesses, descriptors) # tell the archive about the new candidates
         
-        # best_idx = np.argmax(fitnesses)
-        # best_agent = agents[best_idx]
-        
-        # best_agent.save(path_dir=path_pkl, model_name=f"{i}_{fitnesses[best_idx]}.pkl")
+        best_idx = np.argmax(fitnesses)
+        if fitnesses[best_idx] > global_best_fitness:
+            # save the best agent 
+            best_agent = agents[best_idx]
+            best_agent.save(path_dir=config["path_dir"])
         
         global_best_fitness = max(global_best_fitness, archive.best_fitness)
         
         log = "iteration " + str(i) + "  " + str(max(fitnesses)) + "  " + str(np.mean(fitnesses))
         if config["wandb"]:
-            wandb.log({"iteration": i, "max_fitness": max(fitnesses), "avg_fitness": np.mean(fitnesses), "global_best_fitness": global_best_fitness})
+            wandb.log({"iteration": i, "max_fitness": max(fitnesses), "avg_fitness": np.mean(fitnesses), "global_best_fitness": global_best_fitness, "coverage": archive.coverage})
         history_best_fitnesses.append(max(fitnesses))
         history_avg_fitnesses.append(np.mean(fitnesses))
         print(log)
         logs.append(log)
         
         
-        if i % 50 == 0:
-            path_it = f"{config['path_dir']}/{i}"
-            os.makedirs(path_it, exist_ok=True)
-            visualize_archive(archive, path_dir=path_it, cmap="Greens", annot=False, high=False)
+        # if i % 50 == 0:
+        #     path_it = f"{config['path_dir']}/{i}"
+        #     os.makedirs(path_it, exist_ok=True)
+        #     visualize_archive(archive, path_dir=path_it, cmap="Greens", annot=False, high=False)
             # plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=path_it)
             
       
@@ -154,10 +159,12 @@ def launcher(config):
     print("Best fitness: ", best_fit)
     print("Best descriptor: ", best_desc)
     print("Best individual: ", best_ind)
-    best_net = NCHL(nodes=config["nodes"])
-    best_net.set_params(best_ind)
+    log = "Best fitness: " + str(best_fit) + "   Best descriptor: " + str(best_desc) + "   Best individual: " + str(best_ind)
+    logs.append(log)
+    # best_net = NCHL(nodes=config["nodes"])
+    # best_net.set_params(best_ind)
+    # best_net.save(path_dir=config["path_dir"]) # save the best individual
     
-    best_net.save(path_dir=config["path_dir"]) # save the best individual
     archive.save() # save the archive
     save_log(logs, path_dir=config["path_dir"]) # save the logs
     
@@ -165,7 +172,7 @@ def launcher(config):
     visualize_archive(archive, path_dir=config["path_dir"], cmap="Greens", annot=False, high=False)
     plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=config["path_dir"]) 
     
-    # Remove all the pkl generated apart from the best one
+    # # Search for the best model in the pkl directory
     # pkl_path = config["path_dir"] + "/pkl"
     # best_model_name = None
     # best_fitness = -np.inf
@@ -179,9 +186,12 @@ def launcher(config):
     #         except ValueError:
     #             continue
     # print(f"Best model name: {best_model_name}")
+    
+    # # Remove all other models in the pkl directory
     # for file in os.listdir(pkl_path):
     #     if file.endswith(".pkl") and file != best_model_name:
     #         os.remove(os.path.join(pkl_path, file))
+    
     # # Save the best model in the main directory
     # best_net.save(path_dir=config["path_dir"], model_name=best_model_name)
     

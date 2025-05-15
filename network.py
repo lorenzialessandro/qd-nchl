@@ -384,11 +384,11 @@ class NCHL(nn.Module):
             pickle.dump(self, f)
 
     @classmethod
-    def load(cls, path_dir=None, model_name="best_nchl.pkl"):
+    def load(cls, path_model):
         """
         Load the network from a file.
         """
-        with open(os.path.join(path_dir, model_name), "rb") as f:
+        with open(path_model, "rb") as f:
             return pickle.load(f)
         
     def __getstate__(self):

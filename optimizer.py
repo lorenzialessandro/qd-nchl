@@ -9,7 +9,9 @@ class MapElites():
     """
     """
 
-    def __init__(self, seed, map_size, length, pop_size, bounds, threshold, path_dir, sigma):
+    def __init__(self, seed, map_size, length, pop_size, bounds, threshold, path_dir, sigma, 
+                 use_elitism=False, use_crossover=False, use_adaptive_mutation=False, use_prob_sampling=False):
+        
         self.map_size = map_size
         self.length = length
         self.pop_size = pop_size
@@ -23,10 +25,13 @@ class MapElites():
         # Store the best individual 
         self.best_individual = None
         self.best_fitness = float('-inf')
+        
+        # Ask strategy
+        self.use_prob_sampling = use_prob_sampling # if True, use probability sampling for mutation, else use uniform sampling
 
         # Archive parameters
-        self.use_elitism = True
-        self.use_crossover = False
+        self.use_elitism = use_elitism
+        self.use_crossover = use_crossover
         self.crossover_rate = 0.3
         
         # Initialization strategy
@@ -36,7 +41,7 @@ class MapElites():
         self.min_sigma = 0.01
         self.max_sigma = 0.3
         self.sigma_decay = 0.99
-        self.use_adaptive_mutation = True
+        self.use_adaptive_mutation = use_adaptive_mutation
         
         # keys are grid positions (i, j), values are (individual, fitness, descriptors)
         self.archive = {}
@@ -167,14 +172,23 @@ class MapElites():
         if min_fitness < 0:
             fitnesses = fitnesses - min_fitness + 1e-6
         
-        # Calculate selection probabilities
-        probs = fitnesses / np.sum(fitnesses)
-        
-        # Sample positions based on probabilities
-        selected_indices = self.rng.choice(
-            len(positions), size=num_samples, replace=True, p=probs
-        )
-        
+        if self.use_prob_sampling:
+            # Normalize fitnesses to get probabilities
+            fitnesses = fitnesses / np.sum(fitnesses)
+            # Calculate selection probabilities
+            probs = fitnesses / np.sum(fitnesses)
+            
+            # Sample positions based on probabilities
+            selected_indices = self.rng.choice(
+                len(positions), size=num_samples, replace=True, p=probs
+            )
+        else:
+            # Uniform sampling
+            selected_indices = self.rng.choice(
+                len(positions), size=num_samples, replace=False
+            )
+            
+        # Return the selected positions
         return [positions[i] for i in selected_indices]
     
     def _crossover(self, parent1, parent2):
