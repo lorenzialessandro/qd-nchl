@@ -258,7 +258,7 @@ class MapElites():
             if pos not in self.archive or fitness > self.archive[pos][1]:
                 self.archive[pos] = (individual.copy(), fitness, descriptor)
                 
-            # print(f"Stored individual at position {pos} with fitness {fitness} and descriptor {descriptor}")
+            print(f"Stored individual at position {pos} with fitness {fitness} and descriptor {descriptor}")
 
         # Update coverage
         self.coverage = len(self.archive) / (self.map_size[0] * self.map_size[1])
@@ -301,6 +301,7 @@ class MapElites():
             return None, None, None
         
         best_positions = sorted(self.archive.keys(), key=lambda pos: self.archive[pos][1], reverse=True)[:k]
+        
         return [self.archive[pos] for pos in best_positions] # list of (individual, fitness, descriptor)
     
     def save(self):
