@@ -540,8 +540,8 @@ def visualize_reward_landscape_combined(all_trajectories, output_dir=None):
 
     # Select dimensions to plot based on environment
     if input_dims == 4:  # Likely CartPole
-        dim1, dim2 = 0, 2  # Position vs Angle
-        x_label, y_label = 'Cart Position', 'Pole Angle'
+        dim1, dim2 = 0, 1  
+        x_label, y_label = 'Cart Position', 'Cart Velocity'
     elif input_dims == 2:  # Likely MountainCar
         dim1, dim2 = 0, 1
         x_label, y_label = 'Position', 'Velocity'
@@ -562,8 +562,8 @@ def visualize_reward_landscape_combined(all_trajectories, output_dir=None):
         for traj in model_trajectories:
             for i, (state, reward) in enumerate(zip(traj['inputs'], traj['rewards'])):
                 # For some environments rewards come at the next step
-                states_dim1.append(state[0])
-                states_dim2.append(state[1])
+                states_dim1.append(state[dim1])
+                states_dim2.append(state[dim2])
                 rewards.append(reward)
         # If we have enough data points, create a scatter plot
         if states_dim1:
@@ -657,8 +657,8 @@ def main():
     
     visualize_all_pca_trajectories_means_3d(all_projected_trajectories, args.output_dir)
     
-    # # Visualize combined PCA trajectories
-    # visualize_all_pca_trajectories_combined(all_projected_trajectories, args.output_dir)
+    # Visualize combined PCA trajectories
+    visualize_all_pca_trajectories_combined(all_projected_trajectories, args.output_dir)
     
     # Visualize reward landscapes for models
     visualize_reward_landscape_combined(all_trajectories, args.output_dir)

@@ -209,11 +209,7 @@ def visualize_average_archive(list_of_paths, output_dir, min_fitness=None, cmap=
 def visualize_multiple_archives(list_of_paths, output_dir, cmap="viridis"):
     """
     Create multiple subplots, one for each Map-Elites archive, in a single figure.
-    
-    Args:
-        list_of_paths: List of paths to Map-Elites archive files
-        output_dir: Directory to save the output plot
-        cmap: Colormap to use for visualization (default: "viridis")
+    The color scale is unified across all archives.
     """
     if not list_of_paths:
         print("No paths provided, cannot visualize archives.")
@@ -229,77 +225,79 @@ def visualize_multiple_archives(list_of_paths, output_dir, cmap="viridis"):
     if n_plots == 1:
         axes = np.array([axes])  # Ensure axes is iterable for single plot
     axes = axes.flatten()
-    
-    # Process each archive
-    for i, path in enumerate(list_of_paths):
-        if i >= len(axes):
-            break
-            
+
+    # Step 1: Preprocess all grids to determine global min and max
+    all_data = []
+    global_min = float('inf')
+    global_max = float('-inf')
+
+    for path in list_of_paths:
         map_elites = MapElites.load(path)
-        if map_elites.empty():
-            axes[i].text(0.5, 0.5, "Empty Archive", horizontalalignment='center', verticalalignment='center')
-            axes[i].set_title(f"Archive {i+1}: {os.path.basename(path)}")
-            continue
-        
-        # Create grid for this archive
         grid = np.full(map_elites.map_size, np.nan)
         for pos, (_, fitness, _) in map_elites.archive.items():
             grid[pos[0], pos[1]] = fitness
-        
-        # Plot on the corresponding subplot
-        im = axes[i].imshow(grid, cmap=cmap, origin='lower', interpolation='none')
-        
-        # Calculate coverage
+        all_data.append((map_elites, grid, os.path.basename(path)))
+
+        if np.any(~np.isnan(grid)):
+            current_min = np.nanmin(grid)
+            current_max = np.nanmax(grid)
+            global_min = min(global_min, current_min)
+            global_max = max(global_max, current_max)
+
+    # Step 2: Plot each archive
+    for i, (map_elites, grid, filename) in enumerate(all_data):
+        if i >= len(axes):
+            break
+
+        if map_elites.empty():
+            axes[i].text(0.5, 0.5, "Empty Archive", horizontalalignment='center', verticalalignment='center')
+            axes[i].set_title(f"Archive {i+1}: {filename}")
+            continue
+
+        im = axes[i].imshow(grid, cmap=cmap, origin='lower', interpolation='none',
+                            vmin=global_min, vmax=global_max)
+
         filled_cells = np.count_nonzero(~np.isnan(grid))
         total_cells = np.prod(map_elites.map_size)
         coverage = filled_cells / total_cells
-        
-        # Set title for this subplot
+
         axes[i].set_title(f"Archive {i+1}\nCoverage: {coverage:.2%}")
-        
-        # Compute tick positions and labels for x-axis (simplified for subplots)
+
+        # X ticks
         x_ticks = np.linspace(0, map_elites.map_size[1]-1, min(5, map_elites.map_size[1]))
-        x_tick_labels = []
-        for tick in x_ticks:
-            min_x, max_x = map_elites.bounds[1]
-            true_value = min_x + tick * (max_x - min_x) / (map_elites.map_size[1] - 1)
-            x_tick_labels.append(f"{true_value:.2f}")
-        
-        # Compute tick positions and labels for y-axis (simplified for subplots)
-        y_ticks = np.linspace(0, map_elites.map_size[0]-1, min(5, map_elites.map_size[0]))
-        y_tick_labels = []
-        for tick in y_ticks:
-            min_y, max_y = map_elites.bounds[0]
-            true_value = min_y + tick * (max_y - min_y) / (map_elites.map_size[0] - 1)
-            y_tick_labels.append(f"{true_value:.2f}")
-        
-        # Set tick positions and labels
+        min_x, max_x = map_elites.bounds[1]
+        x_labels = [f"{min_x + tick * (max_x - min_x) / (map_elites.map_size[1] - 1):.2f}" for tick in x_ticks]
         axes[i].set_xticks(x_ticks)
-        axes[i].set_xticklabels(x_tick_labels, rotation=45)
+        axes[i].set_xticklabels(x_labels, rotation=45)
+
+        # Y ticks
+        y_ticks = np.linspace(0, map_elites.map_size[0]-1, min(5, map_elites.map_size[0]))
+        min_y, max_y = map_elites.bounds[0]
+        y_labels = [f"{min_y + tick * (max_y - min_y) / (map_elites.map_size[0] - 1):.2f}" for tick in y_ticks]
         axes[i].set_yticks(y_ticks)
-        axes[i].set_yticklabels(y_tick_labels)
-        
-        # Add axis labels
-        if i % n_cols == 0:  # leftmost column
+        axes[i].set_yticklabels(y_labels)
+
+        # Axis labels
+        if i % n_cols == 0:
             axes[i].set_ylabel(descriptor_names[0])
-        if i >= (n_rows-1) * n_cols:  # bottom row
+        if i >= (n_rows-1) * n_cols:
             axes[i].set_xlabel(descriptor_names[1])
-        
+            
         # Add colorbar for each subplot
         fig.colorbar(im, ax=axes[i], label="Fitness")
-    
-    # Hide any unused subplots
-    for j in range(i+1, len(axes)):
+
+    # Hide unused subplots
+    for j in range(i + 1, len(axes)):
         axes[j].axis('off')
-    
-    # Add overall title
+
+    # Overall title and save
     fig.suptitle("Multiple Map-Elite Archives Comparison", fontsize=16)
-    
-    plt.tight_layout(rect=[0, 0, 1, 0.97])  # Adjust for overall title
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
     plt.savefig(os.path.join(output_dir, "multiple_archives.png"), dpi=300, bbox_inches='tight')
     plt.close()
-    
-    print(f"Multiple archives visualization saved to {os.path.join(output_dir, 'multiple_archives.png')}")   
+
+    print(f"Multiple archives visualization saved to {os.path.join(output_dir, 'multiple_archives.png')}")
+ 
 
 # -
 # Fitness history 
@@ -930,6 +928,10 @@ def main():
             logs_paths.append(line + '/log.txt')
     
     # - Plot
+    
+    # Archives
+    visualize_multiple_archives(archive_paths, path_dir)
+    visualize_average_archive(archive_paths, path_dir)
 
     # Fitness history
     plot_descriptors_by_net_zoom(archive_paths, path_dir)

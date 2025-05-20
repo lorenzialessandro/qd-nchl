@@ -11,7 +11,7 @@ from multiprocessing import Pool
 from network import NCHL, Neuron
 from optimizer import MapElites
 from utils import *
-from analysis_archive import plot_archive_analysis, visualize_archive 
+from plot import visualize_archive 
 
 def evaluate(data):
     params = data[0]
@@ -150,7 +150,7 @@ def launcher(config):
         if i % 50 == 0:
             path_it = f"{config['path_dir']}/{i}"
             os.makedirs(path_it, exist_ok=True)
-            visualize_archive(archive, path_dir=path_it, cmap="Greens", annot=False, high=False)
+            visualize_archive(archive, path_dir=path_it)
             # plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=path_it)
             
       
@@ -169,7 +169,7 @@ def launcher(config):
     save_log(logs, path_dir=config["path_dir"]) # save the logs
     
     # Create final visualizations
-    visualize_archive(archive, path_dir=config["path_dir"], cmap="Greens", annot=False, high=False)
+    visualize_archive(archive, path_dir=config["path_dir"])
     plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=config["path_dir"]) 
     
     # # Search for the best model in the pkl directory
