@@ -1,6 +1,7 @@
 import sys
 import os
 import numpy as np
+import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -16,8 +17,7 @@ from optimizer import MapElites
 
 descriptor_names = ["Activation Diversity", "Weight Change Diversity"]
 
-def visualize_archive(map_elites_path, path_dir, cmap="viridis"):
-    map_elites = MapElites.load(map_elites_path)
+def visualize_archive(map_elites, path_dir, cmap="viridis"):
     if map_elites.empty():
         print("Archive is empty, nothing to visualize.")
         return
@@ -385,8 +385,127 @@ def plot_history(avg_fitnesses, best_fitnesses, path_dir):
     plt.savefig(os.path.join(path_dir, "fitness.png"), dpi=300, bbox_inches='tight')
     plt.close()
 
+# - 
+# Hebbian parameters
+
+def plot_hebbian_distribution_per_params(list_of_paths, path_dir):
+    """
+    Visualize the distribution of Hebbian learning parameters across networks.
+    Distribution is shown for each parameter (A, B, C, D, eta) across all networks.
+    """
+    rows = []
+    for net_id, path in enumerate(list_of_paths):
+        net = NCHL.load(path)
+        for layer_idx, layer in enumerate(net.neurons):
+            for neuron in layer:
+                rule = neuron.get_rule()
+                rule_values = [float(p.item()) if hasattr(p, 'item') else float(p) for p in rule]
+                row = {
+                    'Network': net_id,
+                    'Neuron': neuron.neuron_id,
+                    'pre-synaptic (A)': rule_values[0],
+                    'post-synaptic (B)': rule_values[1],
+                    'correlation (C)': rule_values[2],
+                    'decorrelation (D)': rule_values[3],
+                    'learning rate (eta)': rule_values[4],
+                }
+                rows.append(row)
+    df = pd.DataFrame(rows)
+    # Plotting
+    fig, axes = plt.subplots(5, 1, figsize=(12, 15))
+    param_names = ['pre-synaptic (A)', 'post-synaptic (B)', 'correlation (C)', 'decorrelation (D)', 'learning rate (eta)']
+    for i, param in enumerate(param_names):
+        # Box plot
+        sns.boxplot(x='Network', y=param, data=df, ax=axes[i],
+            width=0.5, fliersize=0, legend=False)
+
+        # Overlay strip plot to show individual neuron values
+        sns.stripplot(x='Network', y=param, data=df, ax=axes[i], 
+                      color='black', alpha=0.8, jitter=False)
+        
+        axes[i].set_title(f'{param} distribution', fontsize=14)
+        axes[i].set_xlabel(f'')
+        axes[i].set_ylabel('Value', fontsize=12)
+        
+        axes[i].grid(True, linestyle='--', alpha=0.7)
+        
+    # Add a proper x-axis label to just the bottom subplot
+    axes[4].set_xlabel('Network', fontsize=12)
+        
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.95)
+    plt.suptitle('Hebbian Learning Rule Parameter Distribution Across Networks', fontsize=16)
+    plt.savefig(os.path.join(path_dir, "hebbian_distribution_per_params.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+def plot_hebbian_distribution_per_nets(list_of_paths, path_dir):
+    """
+    Visualize the distribution of Hebbian learning parameters across networks.
+    Distribution is shown for each network.
+    """
+    rows = []
+    for net_id, path in enumerate(list_of_paths):
+        net = NCHL.load(path)
+        for layer_idx, layer in enumerate(net.neurons):
+            for neuron in layer:
+                rule = neuron.get_rule()
+                rule_values = [float(p.item()) if hasattr(p, 'item') else float(p) for p in rule]
+                row = {
+                    'Network': f'Net {net_id}',
+                    'Neuron': neuron.neuron_id,
+                    'pre-synaptic (A)': rule_values[0],
+                    'post-synaptic (B)': rule_values[1],
+                    'correlation (C)': rule_values[2],
+                    'decorrelation (D)': rule_values[3],
+                    'learning rate (eta)': rule_values[4],
+                }
+                rows.append(row)
+
+    df = pd.DataFrame(rows)
+    # Convert to long-form DataFrame for seaborn boxplot
+    df_long = df.melt(id_vars=['Network', 'Neuron'], 
+                      value_vars=[
+                          'pre-synaptic (A)', 
+                          'post-synaptic (B)', 
+                          'correlation (C)', 
+                          'decorrelation (D)', 
+                          'learning rate (eta)'
+                      ],
+                      var_name='Parameter', 
+                      value_name='Value')
+
+    # Get list of unique networks
+    networks = df_long['Network'].unique()
+    n_networks = len(networks)
+
+    n_rows, n_cols = 2, 5
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 8), sharex=True, sharey=True)
+    axes = axes.flatten()
+    
+    for i, net in enumerate(networks):
+        ax = axes[i]
+        sns.boxplot(x='Parameter', y='Value', data=df_long[df_long['Network'] == net], 
+                    hue='Parameter', ax=ax,
+                    width=0.5, fliersize=0, palette='tab10', legend=False)
+        
+        sns.stripplot(x='Parameter', y='Value', data=df_long[df_long['Network'] == net], ax=ax,
+                      color='black', alpha=0.7, jitter=False)
+        axes[i].set_title(f'{net}', fontsize=14)
+        axes[i].set_xlabel('')
+        axes[i].tick_params(axis='x', rotation=30)
+        axes[i].grid(True, linestyle='--', alpha=0.6)
+
+    axes[0].set_ylabel('Parameter Value', fontsize=12)
+
+    plt.suptitle('Hebbian Learning Parameters per Network', fontsize=16)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.88)
+    plt.savefig(os.path.join(path_dir, "hebbian_distribution_per_nets.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+
+
 # -
-# Rules Analysis
+# Rules PCA Analysis
 
 def get_layer_label(idx, total):
     if idx == 0:
@@ -811,14 +930,18 @@ def main():
             logs_paths.append(line + '/log.txt')
     
     # - Plot
-    
+
     # Fitness history
-    # w# plot_descriptors_by_net_zoom(archive_paths, path_dir)
+    plot_descriptors_by_net_zoom(archive_paths, path_dir)
     
-    # Rules 
+    # Hebbian parameters rules
+    plot_hebbian_distribution_per_params(agent_paths, path_dir)
+    plot_hebbian_distribution_per_nets(agent_paths, path_dir)
+    
+    # PCA Rules 
     plot_combined_pca_rules(agent_paths, path_dir)
-    # plot_pca_by_net(agent_paths, path_dir)
-    # plot_pca_by_layer(agent_paths, path_dir)
+    plot_pca_by_net(agent_paths, path_dir)
+    plot_pca_by_layer(agent_paths, path_dir)
     
 if __name__ == "__main__":
     main()  
