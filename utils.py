@@ -27,7 +27,7 @@ def load_config(config_file, task, seed):
     nchl = NCHL(nodes=config["nodes"])
     config["seed"] = seed
     config["length"] = nchl.nparams
-    config["path_dir"] = f"runs/{config['task']}_{seed}"
+    config["path_dir"] = f"exp/{config['task']}_{seed}"
     
     return config
 

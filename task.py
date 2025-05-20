@@ -147,10 +147,10 @@ def launcher(config):
         logs.append(log)
         
         
-        # if i % 50 == 0:
-        #     path_it = f"{config['path_dir']}/{i}"
-        #     os.makedirs(path_it, exist_ok=True)
-        #     visualize_archive(archive, path_dir=path_it, cmap="Greens", annot=False, high=False)
+        if i % 50 == 0:
+            path_it = f"{config['path_dir']}/{i}"
+            os.makedirs(path_it, exist_ok=True)
+            visualize_archive(archive, path_dir=path_it, cmap="Greens", annot=False, high=False)
             # plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=path_it)
             
       

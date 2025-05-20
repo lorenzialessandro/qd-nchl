@@ -304,6 +304,73 @@ def visualize_multiple_archives(list_of_paths, output_dir, cmap="viridis"):
 # -
 # Fitness history 
 
+def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
+    "Plot fitness history of each run, their average, and cumulative global best."
+    all_best_fitnesses = []
+    all_avg_fitnesses = []
+    all_cum_best_fitnesses = []
+
+    for path in logs_paths:
+        with open(path, 'r') as f:
+            lines = f.readlines()
+            best_fitnesses = []
+            avg_fitnesses = []
+            for line in lines:
+                if line.startswith("iteration"):
+                    parts = line.split()
+                    best_fitness = float(parts[2])
+                    avg_fitness = float(parts[3])
+
+                    best_fitnesses.append(best_fitness)
+                    avg_fitnesses.append(avg_fitness)
+
+            all_best_fitnesses.append(best_fitnesses)
+            all_avg_fitnesses.append(avg_fitnesses)
+
+            # Compute cumulative best for this run
+            cum_best = np.maximum.accumulate(best_fitnesses)  # for maximization
+            # cum_best = np.minimum.accumulate(best_fitnesses)  # if minimizing
+            all_cum_best_fitnesses.append(cum_best)
+
+    # Convert to numpy arrays
+    all_best_fitnesses = np.array(all_best_fitnesses)
+    all_avg_fitnesses = np.array(all_avg_fitnesses)
+    all_cum_best_fitnesses = np.array(all_cum_best_fitnesses)
+
+    # Calculate means and stds
+    avg_best_fitnesses = np.mean(all_best_fitnesses, axis=0)
+    avg_avg_fitnesses = np.mean(all_avg_fitnesses, axis=0)
+    std_best_fitnesses = np.std(all_best_fitnesses, axis=0)
+    std_avg_fitnesses = np.std(all_avg_fitnesses, axis=0)
+    avg_cum_best_fitnesses = np.mean(all_cum_best_fitnesses, axis=0)
+    std_cum_best_fitnesses = np.std(all_cum_best_fitnesses, axis=0)
+    
+    plt.figure(figsize=(10, 8))
+    # Plot cumulative global best
+    plt.plot(avg_cum_best_fitnesses, label="Avg Global Best")
+    plt.fill_between(range(len(avg_cum_best_fitnesses)), avg_cum_best_fitnesses - std_cum_best_fitnesses,
+                    avg_cum_best_fitnesses + std_cum_best_fitnesses, alpha=0.2)
+
+    if complete:
+        # Plot per-generation fitness
+        plt.plot(avg_best_fitnesses, label="Avg Best Fitness")
+        plt.fill_between(range(len(avg_best_fitnesses)), avg_best_fitnesses - std_best_fitnesses,
+                        avg_best_fitnesses + std_best_fitnesses, alpha=0.2)
+        plt.plot(avg_avg_fitnesses, label="Avg Avg Fitness")
+        plt.fill_between(range(len(avg_avg_fitnesses)), avg_avg_fitnesses - std_avg_fitnesses,
+                        avg_avg_fitnesses + std_avg_fitnesses, alpha=0.2)
+        
+    if threshold is not None:
+        plt.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
+    
+    plt.legend()
+    plt.title("Fitness over Generations")
+    plt.xlabel("Generation")
+    plt.ylabel("Fitness")
+    plt.savefig(os.path.join(path_dir, "fitness.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+
 def plot_history(avg_fitnesses, best_fitnesses, path_dir):
     """
     Plot the history of fitness values.
@@ -331,7 +398,8 @@ def get_layer_label(idx, total):
 
 def plot_combined_pca_rules(list_of_paths, path_dir):
     """
-    Plot PCA of rules of each networks in unique plot colored by net and layer
+    Plot PCA of rules with colors based on layer type (Input, Hidden, Output)
+    and letters "I", "H", "O" indicating the layer type inside each dot
     """
     all_rules = []
     net_ids = []
@@ -363,55 +431,59 @@ def plot_combined_pca_rules(list_of_paths, path_dir):
     unique_nets = np.unique(net_ids)
     unique_layers = np.unique(layer_ids)
 
-    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_nets)))  # Use a colormap for colors
-    markers = ['o', 's', '^', 'D', 'P', '*', 'X', 'v', '<', '>']  # Extend if needed
+    # Define layer type information
+    layer_types = {}
+    for layer_idx in unique_layers:
+        layer_types[layer_idx] = get_layer_label(layer_idx, max_layer_count)
+    
+    # Distinct colors for layer types (Input, Hidden, Output)
+    layer_colors = {
+        'Input': '#1f77b4',    # Blue
+        'Hidden': '#ff7f0e',   # Orange
+        'Output': '#2ca02c'    # Green
+    }
 
+    # Plot data points
     for net_id in unique_nets:
         for layer_idx in unique_layers:
             mask = (net_ids == net_id) & (layer_ids == layer_idx)
             if not np.any(mask):
                 continue
-            plt.scatter(
+                
+            # Get layer type
+            layer_type = layer_types[layer_idx]
+            
+            # Plot points colored by layer type
+            scatter = plt.scatter(
                 pca_result[mask, 0],
                 pca_result[mask, 1],
-                c=[colors[net_id]],
-                marker=markers[layer_idx % len(markers)],
+                c=layer_colors[layer_type],
+                marker='o',
                 alpha=0.7,
-                s=80,
+                s=250,       # Large marker size
                 edgecolors='k',
-                linewidths=0.5
+                linewidths=0.7
             )
 
-    # Create network color legend
-    color_handles = [
-        Line2D([0], [0], marker='o', color='w', label=f'Net {net_id}',
-               markerfacecolor=colors[net_id], markersize=10, markeredgecolor='k')
-        for net_id in unique_nets
-    ]
+    # Create layer type legend
+    layer_type_handles = []
+    for layer_type, color in layer_colors.items():
+        layer_type_handles.append(
+            Line2D([0], [0], marker='o', color='w', 
+                   label=f'{layer_type}',
+                   markerfacecolor=color, markersize=10, 
+                   markeredgecolor='k')
+        )
 
-    # Create unique layer type handles (Input, Hidden, Output)
-    layer_types = []
-    marker_handles = []
-    for layer_idx in unique_layers:
-        label = get_layer_label(layer_idx, max_layer_count)
-        if label not in layer_types:
-            layer_types.append(label)
-            marker_handles.append(
-                Line2D([0], [0], marker=markers[layer_idx % len(markers)],
-                       markerfacecolor='none', markeredgecolor='k', label=label, linestyle='None', markersize=10)
-            )
-
-    # Put the 2 legends lower but one side the other
-    legend1 = plt.legend(handles=color_handles, loc='upper right', title="Networks")
-    legend2 = plt.legend(handles=marker_handles, loc='lower right', title="Layers")
-    plt.gca().add_artist(legend1)  # Add the first legend to the plot
+    # Add the legend for layer types (primary legend)
+    plt.legend(handles=layer_type_handles, loc='best', title="Layer Types")
 
     # Plot formatting
     plt.xlabel(f"PCA 1 - {pca.explained_variance_ratio_[0]:.2f}")
     plt.ylabel(f"PCA 2 - {pca.explained_variance_ratio_[1]:.2f}")
-    plt.title("PCA of Hebbian Rules Across Multiple Networks")
+    plt.title("PCA of Hebbian Rules by Layer Type")
     plt.tight_layout()
-    plt.savefig(os.path.join(path_dir, "pca_multi_net.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(path_dir, "pca_multi_net_by_layer.png"), dpi=300, bbox_inches='tight')
     plt.close()
 
 def plot_pca_by_net(list_of_paths, path_dir):
@@ -729,26 +801,24 @@ def main():
     # Load paths from the file
     archive_paths = []  # list of paths to archives
     agent_paths = []    # list of paths to agents
+    logs_paths = []     # list of paths to logs (history)
     
     with open(sys.argv[1], 'r') as file:
         for line in file.readlines():
             line = line.strip()
             archive_paths.append(line + '/archive.pkl')
             agent_paths.append(line + '/best_nchl.pkl') 
+            logs_paths.append(line + '/log.txt')
     
     # - Plot
     
-    # Archive 
-    visualize_average_archive(archive_paths, path_dir)
-    visualize_multiple_archives(archive_paths, path_dir)
-    
-    # Descriptors
-    plot_descriptors_by_net_zoom(archive_paths, path_dir)
+    # Fitness history
+    # w# plot_descriptors_by_net_zoom(archive_paths, path_dir)
     
     # Rules 
-    # plot_combined_pca_rules(agent_paths, path_dir)
-    plot_pca_by_net(agent_paths, path_dir)
-    plot_pca_by_layer(agent_paths, path_dir)
+    plot_combined_pca_rules(agent_paths, path_dir)
+    # plot_pca_by_net(agent_paths, path_dir)
+    # plot_pca_by_layer(agent_paths, path_dir)
     
 if __name__ == "__main__":
     main()  
