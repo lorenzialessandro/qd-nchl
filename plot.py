@@ -386,10 +386,10 @@ def plot_history(avg_fitnesses, best_fitnesses, path_dir):
 # - 
 # Hebbian parameters
 
-def plot_hebbian_distribution_per_params(list_of_paths, path_dir):
+def plot_hebbian_values(list_of_paths, path_dir):
     """
-    Visualize the distribution of Hebbian learning parameters across networks.
-    Distribution is shown for each parameter (A, B, C, D, eta) across all networks.
+    for each network compute the average of each of the 5 params
+    plot one subplot for each network
     """
     rows = []
     for net_id, path in enumerate(list_of_paths):
@@ -409,34 +409,91 @@ def plot_hebbian_distribution_per_params(list_of_paths, path_dir):
                 }
                 rows.append(row)
     df = pd.DataFrame(rows)
-    # Plotting
-    fig, axes = plt.subplots(5, 1, figsize=(12, 15))
-    param_names = ['pre-synaptic (A)', 'post-synaptic (B)', 'correlation (C)', 'decorrelation (D)', 'learning rate (eta)']
-    for i, param in enumerate(param_names):
-        # Box plot
-        sns.boxplot(x='Network', y=param, data=df, ax=axes[i],
-            width=0.5, fliersize=0, legend=False)
-
-        # Overlay strip plot to show individual neuron values
-        sns.stripplot(x='Network', y=param, data=df, ax=axes[i], 
-                      color='black', alpha=0.8, jitter=False)
-        
-        axes[i].set_title(f'{param} distribution', fontsize=14)
-        axes[i].set_xlabel(f'')
-        axes[i].set_ylabel('Value', fontsize=12)
-        
+    
+    # compute the mean of each param for each network
+    df_means = df.groupby('Network').mean().reset_index()
+    df_means = df_means.melt(id_vars='Network', var_name='Parameter', value_name='Value')
+    
+    # plot the mean of each param for each network
+    fig, axes = plt.subplots(1, len(df_means['Parameter'].unique()), figsize=(20, 6), sharex=True, sharey=True)
+    axes = axes.flatten()
+    
+    for i, param in enumerate(df_means['Parameter'].unique()):
+        sns.barplot(x='Network', y='Value', data=df_means[df_means['Parameter'] == param], ax=axes[i])
+        axes[i].set_title(f'{param} mean value', fontsize=14)
+        axes[i].set_xlabel('')
+        axes[i].set_ylabel('Mean Value', fontsize=12)
         axes[i].grid(True, linestyle='--', alpha=0.7)
-        
-    # Add a proper x-axis label to just the bottom subplot
-    axes[4].set_xlabel('Network', fontsize=12)
-        
+    axes[0].set_ylabel('Mean Value', fontsize=12)
     plt.tight_layout()
     plt.subplots_adjust(top=0.95)
-    plt.suptitle('Hebbian Learning Rule Parameter Distribution Across Networks', fontsize=16)
-    plt.savefig(os.path.join(path_dir, "hebbian_distribution_per_params.png"), dpi=300, bbox_inches='tight')
+    plt.suptitle('Hebbian Learning Rule Parameter Means Across Networks', fontsize=16)
+    plt.savefig(os.path.join(path_dir, "hebbian_values.png"), dpi=300, bbox_inches='tight')
     plt.close()
     
-def plot_hebbian_distribution_per_nets(list_of_paths, path_dir):
+
+def plot_hebbian_distribution_per_params(list_of_paths, path_dir, only_hidden=False):
+    """
+    Visualize the distribution of Hebbian learning parameters across networks.
+    Each parameter (A, B, C, D, eta) is displayed in its own row, with consistent color per parameter.
+    """
+    rows = []
+    for net_id, path in enumerate(list_of_paths):
+        net = NCHL.load(path)
+        for layer_idx, layer in enumerate(net.neurons):
+            if only_hidden and (layer_idx == 0 or layer_idx == len(net.neurons) - 1): # skip input and output layers
+                continue
+            for neuron in layer:
+                rule = neuron.get_rule()
+                rule_values = [float(p.item()) if hasattr(p, 'item') else float(p) for p in rule]
+                row = {
+                    'Network': net_id,
+                    'Neuron': neuron.neuron_id,
+                    'pre-synaptic (A)': rule_values[0],
+                    'post-synaptic (B)': rule_values[1],
+                    'correlation (C)': rule_values[2],
+                    'decorrelation (D)': rule_values[3],
+                    'learning rate (eta)': rule_values[4],
+                }
+                rows.append(row)
+    df = pd.DataFrame(rows)
+
+    # Parameter names
+    param_names = ['pre-synaptic (A)', 'post-synaptic (B)', 'correlation (C)', 'decorrelation (D)', 'learning rate (eta)']
+    
+    # Colors
+    palette = sns.color_palette("viridis", len(param_names))  
+    param_colors = dict(zip(param_names, palette))
+
+    fig, axes = plt.subplots(5, 1, figsize=(12, 15))
+
+    for i, param in enumerate(param_names):
+        color = param_colors[param]
+
+        # Boxplot with one color
+        sns.boxplot(x='Network', y=param, data=df, ax=axes[i],
+                    color=color, width=0.5, fliersize=0)
+
+        # Stripplot with same color
+        sns.stripplot(x='Network', y=param, data=df, ax=axes[i],
+                      color='black', alpha=0.6, jitter=True, size=5)
+
+        axes[i].set_title(f'{param} distribution', fontsize=14, color=color)
+        axes[i].set_xlabel('')
+        axes[i].set_ylabel('Value', fontsize=12)
+        axes[i].grid(True, linestyle='--', alpha=0.7)
+
+    axes[4].set_xlabel('Network', fontsize=12)
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.95)
+    suffix = "_hidden" if only_hidden else ""
+    plt.suptitle('Hebbian Learning Rule Parameter Distribution Across Networks', fontsize=16)
+    plt.savefig(os.path.join(path_dir, f"hebbian_distribution_per_params{suffix}.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+
+    
+def plot_hebbian_distribution_per_nets(list_of_paths, path_dir, only_hidden=False):
     """
     Visualize the distribution of Hebbian learning parameters across networks.
     Distribution is shown for each network.
@@ -446,6 +503,8 @@ def plot_hebbian_distribution_per_nets(list_of_paths, path_dir):
         net = NCHL.load(path)
         for layer_idx, layer in enumerate(net.neurons):
             for neuron in layer:
+                if only_hidden and (layer_idx == 0 or layer_idx == len(net.neurons) - 1):
+                    continue
                 rule = neuron.get_rule()
                 rule_values = [float(p.item()) if hasattr(p, 'item') else float(p) for p in rule]
                 row = {
@@ -480,25 +539,32 @@ def plot_hebbian_distribution_per_nets(list_of_paths, path_dir):
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 8), sharex=True, sharey=True)
     axes = axes.flatten()
     
+    # set one color for each parameter
+    palette = sns.color_palette("viridis", n_colors=len(df_long['Parameter'].unique()))
+    
     for i, net in enumerate(networks):
         ax = axes[i]
         sns.boxplot(x='Parameter', y='Value', data=df_long[df_long['Network'] == net], 
                     hue='Parameter', ax=ax,
-                    width=0.5, fliersize=0, palette='tab10', legend=False)
+                    width=0.8, fliersize=0, palette=palette, legend=False)
         
         sns.stripplot(x='Parameter', y='Value', data=df_long[df_long['Network'] == net], ax=ax,
-                      color='black', alpha=0.7, jitter=False)
+                      color='black', alpha=0.7, jitter=True, size=6)
         axes[i].set_title(f'{net}', fontsize=14)
         axes[i].set_xlabel('')
         axes[i].tick_params(axis='x', rotation=30)
+        # color the x ticks
+        for j, tick in enumerate(axes[i].get_xticklabels()):
+            tick.set_color(palette[j])
         axes[i].grid(True, linestyle='--', alpha=0.6)
 
     axes[0].set_ylabel('Parameter Value', fontsize=12)
-
+    
     plt.suptitle('Hebbian Learning Parameters per Network', fontsize=16)
     plt.tight_layout()
     plt.subplots_adjust(top=0.88)
-    plt.savefig(os.path.join(path_dir, "hebbian_distribution_per_nets.png"), dpi=300, bbox_inches='tight')
+    suffix = "_hidden" if only_hidden else ""
+    plt.savefig(os.path.join(path_dir, f"hebbian_distribution_per_nets{suffix}.png"), dpi=300, bbox_inches='tight')
     plt.close()
 
 
@@ -553,12 +619,14 @@ def plot_combined_pca_rules(list_of_paths, path_dir):
     for layer_idx in unique_layers:
         layer_types[layer_idx] = get_layer_label(layer_idx, max_layer_count)
     
-    # Distinct colors for layer types (Input, Hidden, Output)
+    # Define cmap colors 
+    cmap = plt.cm.viridis(np.linspace(0, 1, len(unique_layers)))
     layer_colors = {
-        'Input': '#1f77b4',    # Blue
-        'Hidden': '#ff7f0e',   # Orange
-        'Output': '#2ca02c'    # Green
+        "Input": cmap[0],
+        "Hidden": cmap[1],
+        "Output": cmap[2]
     }
+        
 
     # Plot data points
     for net_id in unique_nets:
@@ -574,11 +642,10 @@ def plot_combined_pca_rules(list_of_paths, path_dir):
             scatter = plt.scatter(
                 pca_result[mask, 0],
                 pca_result[mask, 1],
-                c=layer_colors[layer_type],
+                color=layer_colors[layer_type],
                 marker='o',
                 alpha=0.7,
-                s=250,       # Large marker size
-                edgecolors='k',
+                s=250,
                 linewidths=0.7
             )
 
@@ -588,8 +655,7 @@ def plot_combined_pca_rules(list_of_paths, path_dir):
         layer_type_handles.append(
             Line2D([0], [0], marker='o', color='w', 
                    label=f'{layer_type}',
-                   markerfacecolor=color, markersize=10, 
-                   markeredgecolor='k')
+                   markerfacecolor=color, markersize=10)
         )
 
     # Add the legend for layer types (primary legend)
@@ -899,6 +965,7 @@ def plot_descriptors_by_net_zoom(list_of_paths, path_dir):
     plt.savefig(os.path.join(path_dir, "descriptors_by_net.png"), dpi=300, bbox_inches='tight')
     plt.close()
     
+
 # -
 
 # -------------------------------------
@@ -939,7 +1006,9 @@ def main():
     # Hebbian parameters rules
     plot_hebbian_distribution_per_params(agent_paths, path_dir)
     plot_hebbian_distribution_per_nets(agent_paths, path_dir)
-    
+    # plot_hebbian_distribution_per_params(agent_paths, path_dir, only_hidden=True)   # only hidden neurons
+    # plot_hebbian_distribution_per_nets(agent_paths, path_dir, only_hidden=True)     # only hidden neurons
+
     # PCA Rules 
     plot_combined_pca_rules(agent_paths, path_dir)
     plot_pca_by_net(agent_paths, path_dir)

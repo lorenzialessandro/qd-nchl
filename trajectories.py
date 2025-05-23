@@ -587,6 +587,86 @@ def visualize_reward_landscape_combined(all_trajectories, output_dir=None):
         
     plt.close(fig)
     
+def visualize_reward_landscape_combined_3d(all_trajectories, output_dir=None):
+    """
+    Visualize reward landscape for all models in 3D with time on z-axis.
+    """
+    
+    n_models = len(all_trajectories)
+    if n_models == 0:
+        print("No models to visualize")
+        return
+    
+    # Create figure with subplots arranged by model
+    n_cols = 3  # number of subplots per row
+    n_rows = (n_models + n_cols - 1) // n_cols  # ceil division
+    fig = plt.figure(figsize=(6 * n_cols, 5 * n_rows))
+    gs = gridspec.GridSpec(n_rows, n_cols, figure=fig)
+    
+    # Determine appropriate dimensions to visualize based on input size
+    sample_input = all_trajectories[0][0]['inputs'][0]
+    input_dims = len(sample_input)
+
+    # Select dimensions to plot based on environment
+    if input_dims == 4:  # Likely CartPole
+        dim1, dim2 = 0, 1  
+        x_label, y_label = 'Cart Position', 'Cart Velocity'
+    elif input_dims == 2:  # Likely MountainCar
+        dim1, dim2 = 0, 1
+        x_label, y_label = 'Position', 'Velocity'
+    elif input_dims == 8:  # Likely LunarLander
+        dim1, dim2 = 0, 1
+        x_label, y_label = 'X Position', 'Y Position'
+    else:
+        # For unknown environments, just use the first two dimensions
+        dim1, dim2 = 0, min(1, input_dims-1)
+        x_label, y_label = 'Dimension 1', 'Dimension 2'
+    
+    # Plot for each model
+    for model_idx, model_trajectories in enumerate(all_trajectories):
+        # Extract state-reward-time tuples from all trajectories
+        states_dim1 = []
+        states_dim2 = []
+        rewards = []
+        time_steps = []
+        
+        for traj_idx, traj in enumerate(model_trajectories):
+            for step_idx, (state, reward) in enumerate(zip(traj['inputs'], traj['rewards'])):
+                states_dim1.append(state[dim1])
+                states_dim2.append(state[dim2])
+                rewards.append(reward)
+                time_steps.append(step_idx)
+        
+        # If we have enough data points, create a 3D scatter plot
+        if states_dim1:
+            ax = fig.add_subplot(gs[model_idx // n_cols, model_idx % n_cols], projection='3d')
+            
+            # Create 3D scatter plot with rewards as color
+            sc = ax.scatter3D(states_dim1, states_dim2, time_steps, 
+                            c=rewards, cmap='viridis', alpha=0.6, s=30)
+            
+            # Set labels
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            ax.set_zlabel('Time Step')
+            ax.set_title(f'Model {model_idx+1} 3D Reward Landscape')
+            
+            # Add colorbar
+            cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.1, shrink=0.8)
+            cbar.set_label('Reward')
+            
+            # Set consistent view angle for better comparison
+            ax.view_init(elev=20, azim=45)
+            
+    plt.tight_layout()
+    
+    if output_dir:
+        plt.savefig(os.path.join(output_dir, 'reward_landscape_3d_combined.png'), 
+                   dpi=300, bbox_inches='tight')
+        print(f"3D reward landscape visualization saved to {os.path.join(output_dir, 'reward_landscape_3d_combined.png')}")
+        
+    plt.close(fig)
+   
 
 def main():
     parser = argparse.ArgumentParser(description='NCHL Behavioral Analysis')
@@ -652,16 +732,18 @@ def main():
         env.close()
     
     # -
+    
     # Visualize PCA trajectories for models
     visualize_all_pca_trajectories_3d(all_projected_trajectories, args.output_dir)
-    
     visualize_all_pca_trajectories_means_3d(all_projected_trajectories, args.output_dir)
     
     # Visualize combined PCA trajectories
-    visualize_all_pca_trajectories_combined(all_projected_trajectories, args.output_dir)
+    # visualize_all_pca_trajectories_combined(all_projected_trajectories, args.output_dir)
     
     # Visualize reward landscapes for models
     visualize_reward_landscape_combined(all_trajectories, args.output_dir)
+    visualize_reward_landscape_combined_3d(all_trajectories, args.output_dir)
+    
     
     print("Analysis complete!")
 
