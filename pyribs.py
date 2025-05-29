@@ -1,11 +1,12 @@
 import os
 import random
 import numpy as np
+import pickle
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 
 from ribs.archives import GridArchive
-from ribs.emitters import GaussianEmitter, EvolutionStrategyEmitter
+from ribs.emitters import GaussianEmitter, EvolutionStrategyEmitter, GradientArborescenceEmitter
 from ribs.schedulers import Scheduler
 from ribs.visualize import grid_archive_heatmap
 
@@ -18,7 +19,8 @@ class QDBase(ABC):
         self.archive = GridArchive(
             solution_dim=config["solution_dim"],
             dims=config["dims"],
-            ranges=config["ranges"]
+            ranges=config["ranges"],
+            qd_score_offset=-200 #TODO: adjust this value based on your task and archive settings
         )
 
         self.emitters = self._create_emitters()
@@ -39,8 +41,23 @@ class QDBase(ABC):
 
     def get_stats(self):
         stats = self.archive.stats
-        return 'size ' + str(stats.num_elites) + '   coverage ' + str(stats.coverage) + '   qd score ' + str(stats.qd_score) + '   max obj ' + str(stats.obj_max) + '   mean obj ' + str(stats.obj_mean)
-
+        return {
+            "num_elites": stats.num_elites,
+            "coverage": stats.coverage,
+            "qd_score": stats.qd_score,
+            "obj_max": stats.obj_max,
+            "obj_mean": stats.obj_mean
+        }
+        
+    def save_archive(self):
+        os.makedirs(self.path_dir, exist_ok=True)
+        with open(os.path.join(self.path_dir, 'archive.pkl'), 'wb') as f:
+            pickle.dump(self.archive, f)
+        
+    def load_archive(self):
+        with open(os.path.join(self.path_dir, 'archive.pkl'), 'rb') as f:
+            self.archive = pickle.load(f)
+        
     def visualize_archive(self):
         os.makedirs(self.path_dir, exist_ok=True)
         plt.figure(figsize=(10, 10))
@@ -77,9 +94,9 @@ class CMAME(QDBase):
     def _create_emitters(self):
 
         return [
-            EvolutionStrategyEmitter(
+            GradientArborescenceEmitter(
                 archive=self.archive,
-                sigma0=1.0,
+                sigma0=0.5,
                 ranker="2imp",
                 x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
                 batch_size=self.config["batch_size"]
@@ -93,6 +110,15 @@ class CMAMAE(QDBase):
     def __init__(self, config):
 
         super().__init__(config)
+        
+        self.archive = GridArchive(
+            solution_dim=config["solution_dim"],
+            dims=config["dims"],
+            ranges=config["ranges"],
+            qd_score_offset=-200, # TODO: adjust this value based on your task and archive settings
+            learning_rate=0.01,
+            threshold_min=-200.0 #TODO: adjust this value based on your task and archive settings
+        )
 
         self.result_archive = GridArchive(
             solution_dim=self.config["solution_dim"],
@@ -109,6 +135,63 @@ class CMAMAE(QDBase):
                 archive=self.archive,
                 x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
                 sigma0=0.5,
+                ranker="imp",
+                selection_rule="mu",
+                restart_rule="basic",
+                batch_size=self.config["batch_size"]
+            ) for _ in range(self.config["num_emitters"])
+        ]
+        
+# -
+
+class CMAMEGA(QDBase):
+
+    def _create_emitters(self):
+
+        return [
+            GradientArborescenceEmitter(
+                archive=self.archive,
+                sigma0=0.5,
+                lr=0.05,
+                ranker="2imp",
+                x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
+                batch_size=self.config["batch_size"]
+            ) for _ in range(self.config["num_emitters"])
+        ]
+
+# -
+
+
+class CMAMAEGA(QDBase):
+    def __init__(self, config):
+
+        super().__init__(config)
+        
+        self.archive = GridArchive(
+            solution_dim=config["solution_dim"],
+            dims=config["dims"],
+            ranges=config["ranges"],
+            qd_score_offset=-200, # TODO: adjust this value based on your task and archive settings
+            learning_rate=0.01,
+            threshold_min=-200.0 #TODO: adjust this value based on your task and archive settings
+        )
+
+        self.result_archive = GridArchive(
+            solution_dim=self.config["solution_dim"],
+            dims=self.config["dims"],
+            ranges=self.config["ranges"]
+        )
+
+        self.scheduler = Scheduler(
+            self.archive, self.emitters, result_archive=self.result_archive)
+
+    def _create_emitters(self):
+        return [
+            GradientArborescenceEmitter(
+                archive=self.archive,
+                x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
+                sigma0=0.5,
+                lr=0.05
                 ranker="imp",
                 selection_rule="mu",
                 restart_rule="basic",
