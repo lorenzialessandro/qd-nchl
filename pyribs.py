@@ -20,7 +20,7 @@ class QDBase(ABC):
             solution_dim=config["solution_dim"],
             dims=config["dims"],
             ranges=config["ranges"],
-            qd_score_offset=-200 #TODO: adjust this value based on your task and archive settings
+            qd_score_offset=-600 #TODO: adjust this value based on your task and archive settings
         )
 
         self.emitters = self._create_emitters()
@@ -94,7 +94,7 @@ class CMAME(QDBase):
     def _create_emitters(self):
 
         return [
-            GradientArborescenceEmitter(
+            EvolutionStrategyEmitter(
                 archive=self.archive,
                 sigma0=0.5,
                 ranker="2imp",
@@ -110,14 +110,14 @@ class CMAMAE(QDBase):
     def __init__(self, config):
 
         super().__init__(config)
-        
+
         self.archive = GridArchive(
             solution_dim=config["solution_dim"],
             dims=config["dims"],
             ranges=config["ranges"],
-            qd_score_offset=-200, # TODO: adjust this value based on your task and archive settings
+            qd_score_offset=-600, #TODO: adjust this value based on your task and archive settings
             learning_rate=0.01,
-            threshold_min=-200.0 #TODO: adjust this value based on your task and archive settings
+            threshold_min=-2500  #TODO: adjust this value based on your task and archive settings
         )
 
         self.result_archive = GridArchive(
@@ -125,6 +125,8 @@ class CMAMAE(QDBase):
             dims=self.config["dims"],
             ranges=self.config["ranges"]
         )
+        
+        self.emitters = self._create_emitters()
 
         self.scheduler = Scheduler(
             self.archive, self.emitters, result_archive=self.result_archive)
@@ -171,9 +173,9 @@ class CMAMAEGA(QDBase):
             solution_dim=config["solution_dim"],
             dims=config["dims"],
             ranges=config["ranges"],
-            qd_score_offset=-200, # TODO: adjust this value based on your task and archive settings
+            qd_score_offset=-600, # TODO: adjust this value based on your task and archive settings
             learning_rate=0.01,
-            threshold_min=-200.0 #TODO: adjust this value based on your task and archive settings
+            threshold_min=-210.0 #TODO: adjust this value based on your task and archive settings
         )
 
         self.result_archive = GridArchive(
@@ -191,7 +193,7 @@ class CMAMAEGA(QDBase):
                 archive=self.archive,
                 x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
                 sigma0=0.5,
-                lr=0.05
+                lr=0.05,
                 ranker="imp",
                 selection_rule="mu",
                 restart_rule="basic",
