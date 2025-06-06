@@ -33,11 +33,11 @@ def load_config(config_file, task, seed):
 
 # - 
 # save log functions
-def save_log(logs, path_dir):
+def save_log(logs, path_dir, filename="log.txt"):
     """
     Save the logs to a file.
     """
-    with open(os.path.join(path_dir, "log.txt"), 'w') as f:
+    with open(os.path.join(path_dir, filename), 'w') as f:
         for log in logs:
             f.write(log + "\n")
 
@@ -110,5 +110,4 @@ def plot_history(avg_fitnesses, best_fitnesses, path_dir):
     plt.ylabel("Fitness")
     plt.savefig(os.path.join(path_dir, "fitness.png"))
     plt.close()
-    
     

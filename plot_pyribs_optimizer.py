@@ -16,6 +16,7 @@ from pyribs import QDBase
 # Global variables
 descriptor_names = ["Activation Diversity", "Weight Change Diversity"]
 optimizers_names = ["MAPElites", "CMAME", "CMAMAE"]
+# optimizers_names = ["CMAME", "CMAMAE"]
 
 # Utility function
 def get_optimizer_paths(list_of_paths):
@@ -60,6 +61,7 @@ def compute_qd_score(archive):
     
 # -
 # Archive
+
 def compute_avg_archive(list_of_paths):
     # Load first archive to get dimensions and bounds
     first_archive = pickle.load(open(list_of_paths[0], 'rb'))
@@ -96,24 +98,40 @@ def compute_avg_archive(list_of_paths):
 def visualize_avg_archives(list_of_paths, output_dir, cmap="viridis"):
     # For each optimizer, compute the average archive across all runs 
     # Create a unique plot with each optimizer's average archive subplot side by side.
-    # Load first archive to get dimensions and bounds
     
-    # Read and divide the paths into archives
     optimizer_paths = get_optimizer_paths(list_of_paths)
-            
+    
+    # First pass: compute all average archives and find global min/max
+    avg_archives = {}
+    global_min = float('inf')
+    global_max = float('-inf')
+    
+    for optimizer_name in optimizers_names:
+        avg_archive, bounds = compute_avg_archive(optimizer_paths[optimizer_name])
+        avg_archives[optimizer_name] = (avg_archive, bounds)
+        
+        # Update global min/max (ignoring NaN values)
+        valid_values = avg_archive[~np.isnan(avg_archive)]
+        if len(valid_values) > 0:
+            global_min = min(global_min, np.min(valid_values))
+            global_max = max(global_max, np.max(valid_values))
+    
     # Create a figure with subplots for each optimizer
     n_optimizers = len(optimizers_names)
     fig, axes = plt.subplots(1, n_optimizers, figsize=(5 * n_optimizers, 5))
     
     if n_optimizers == 1:
         axes = [axes]
+    
+    # Second pass: create plots with normalized colormap
     for ax, optimizer_name in zip(axes, optimizers_names):
+        avg_archive, bounds = avg_archives[optimizer_name]
         
-        avg_archive, bounds = compute_avg_archive(optimizer_paths[optimizer_name])
-        
-        # Create heatmap
+        # Create heatmap with normalized color scale
         cax = ax.imshow(avg_archive, cmap=cmap, aspect='auto', 
-                        extent=[bounds[1][0], bounds[1][1], bounds[0][0], bounds[0][1]])
+                        extent=[bounds[1][0], bounds[1][1], bounds[0][0], bounds[0][1]],
+                        vmin=global_min, vmax=global_max)  
+        
         ax.set_title(f'{optimizer_name} Average Archive')
         ax.set_xlabel(descriptor_names[1])
         ax.set_ylabel(descriptor_names[0])
@@ -162,7 +180,7 @@ def compute_fitness_history(logs_paths):
 
     return (np.array(all_best_fitnesses), np.array(all_avg_fitnesses), np.array(all_cum_best_fitnesses))
 
-def plot_fitness_history_compare(logs_paths, path_dir, complete=False, threshold=None):
+def plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=False, threshold=None):
     optimizer_paths = get_optimizer_paths(logs_paths)
             
     # Create a unique plot
@@ -178,14 +196,15 @@ def plot_fitness_history_compare(logs_paths, path_dir, complete=False, threshold
         all_avg_fitnesses.append(avg_fitnesses)
         all_cum_best_fitnesses.append(cum_best_fitnesses)
         
-        # Plot cumulative global best
-        avg_cum_best = np.mean(cum_best_fitnesses, axis=0)
-        std_cum_best = np.std(cum_best_fitnesses, axis=0)
-        plt.plot(avg_cum_best, label=f"{optimizer_name} Avg Global Best")
-        plt.fill_between(range(len(avg_cum_best)), avg_cum_best - std_cum_best,
-                         avg_cum_best + std_cum_best, alpha=0.2)
+        if not only_best:
+            # Plot cumulative global best
+            avg_cum_best = np.mean(cum_best_fitnesses, axis=0)
+            std_cum_best = np.std(cum_best_fitnesses, axis=0)
+            plt.plot(avg_cum_best, label=f"{optimizer_name} Avg Global Best")
+            plt.fill_between(range(len(avg_cum_best)), avg_cum_best - std_cum_best,
+                            avg_cum_best + std_cum_best, alpha=0.2)
 
-        if complete: 
+        if complete or only_best: 
             # Plot the best fitness
             avg_best_fitnesses = np.mean(best_fitnesses, axis=0)
             std_best_fitnesses = np.std(best_fitnesses, axis=0)
@@ -193,7 +212,7 @@ def plot_fitness_history_compare(logs_paths, path_dir, complete=False, threshold
             plt.fill_between(range(len(avg_best_fitnesses)), avg_best_fitnesses - std_best_fitnesses,
                             avg_best_fitnesses + std_best_fitnesses, alpha=0.2)
 
-        if complete:
+        if complete and not only_best:
             # Plot the average fitness
             avg_avg_fitnesses = np.mean(avg_fitnesses, axis=0)
             std_avg_fitnesses = np.std(avg_fitnesses, axis=0)
@@ -208,7 +227,9 @@ def plot_fitness_history_compare(logs_paths, path_dir, complete=False, threshold
     plt.ylabel("Fitness")
     plt.legend(loc='lower right')
     plt.tight_layout()
-    plt.savefig(os.path.join(path_dir, "fitness_history_compare.png"), dpi=300, bbox_inches='tight')
+    appendix = "_complete" if complete else ""
+    appendix += "_only_best" if only_best else ""
+    plt.savefig(os.path.join(path_dir, f"fitness_history_compare{appendix}.png"), dpi=300, bbox_inches='tight')
     plt.close()
 
 def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
@@ -247,13 +268,13 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
             ax.fill_between(range(len(avg_best_fitnesses)), avg_best_fitnesses - std_best_fitnesses,
                             avg_best_fitnesses + std_best_fitnesses, alpha=0.2)
 
-        if complete:
-            # Plot the average fitness
-            avg_avg_fitnesses = np.mean(avg_fitnesses, axis=0)
-            std_avg_fitnesses = np.std(avg_fitnesses, axis=0)
-            ax.plot(avg_avg_fitnesses, label="Avg Avg Fitness")
-            ax.fill_between(range(len(avg_avg_fitnesses)), avg_avg_fitnesses - std_avg_fitnesses,
-                            avg_avg_fitnesses + std_avg_fitnesses, alpha=0.2)
+        # if complete:
+        #     # Plot the average fitness
+        #     avg_avg_fitnesses = np.mean(avg_fitnesses, axis=0)
+        #     std_avg_fitnesses = np.std(avg_fitnesses, axis=0)
+        #     ax.plot(avg_avg_fitnesses, label="Avg Avg Fitness")
+        #     ax.fill_between(range(len(avg_avg_fitnesses)), avg_avg_fitnesses - std_avg_fitnesses,
+        #                     avg_avg_fitnesses + std_avg_fitnesses, alpha=0.2)
         
         if threshold is not None:
             ax.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
@@ -564,7 +585,7 @@ def plot_combined_pca_rules(list_of_paths, path_dir, nodes, only_hidden=False):
         optimizer_handles.append(
             Line2D([0], [0], marker='o', color='w', 
                    label=f'{optimizer_name}',
-                   markerfacecolor=color, markersize=10)
+                   markerfacecolor=color, markersize=10, alpha=0.7, linewidth=0.7)
         )
     # layer_type_handles = []
     # for layer_type, color in layer_colors.items():
@@ -639,7 +660,6 @@ def plot_descriptors(list_of_paths, path_dir, k=5):
     plt.tight_layout()
     plt.savefig(os.path.join(path_dir, "descriptors.png"), dpi=300, bbox_inches='tight')
     plt.close()
-    print("Descriptors plot saved to:", os.path.join(path_dir, "descriptors.png"))
 
 # -
 # Archive stats
@@ -824,20 +844,25 @@ def main():
             line = line.strip()
             archive_paths.append(line + '/archive.pkl')
             logs_paths.append(line + '/log.txt')
+            
+    print(archive_paths)
+    print("-")
+    print(logs_paths)
     
     # - Plot
     print("Plotting...")
     
     # Archives
     visualize_avg_archives(archive_paths, path_dir)
-    
+
     # Archives stats
     plot_archives_stats_columns(archive_paths, path_dir)
     plot_archives_stats_seaborn(archive_paths, path_dir)
 
     # Fitness history
     plot_fitness_history(logs_paths, path_dir, complete=True)
-    plot_fitness_history_compare(logs_paths, path_dir, complete=False)
+    plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=False)
+    plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=True)
     
     # Descriptors 
     plot_descriptors(archive_paths, path_dir)

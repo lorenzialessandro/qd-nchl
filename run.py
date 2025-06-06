@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import random
 import json
+import pickle
 import wandb
 from multiprocessing import Pool
 
@@ -12,8 +13,12 @@ from network import NCHL, Neuron
 from pyribs import MAPElites, CMAME, CMAMAE
 from utils import *
 
+DEBUG = False  # Set to True for debugging purposes
+
 def evaluate(data):
     params = data[0]
+    # clamp parameters to the range [-1, 1] # TODO: change this
+    # params = np.clip(params, -1, 1)         # TODO: change this
     args = data[1]
     nodes = args["nodes"]
     task = args["task"]
@@ -21,7 +26,8 @@ def evaluate(data):
     env = gym.make(task)
     agent = NCHL(nodes) # grad=False
     agent.set_params(params)
-    
+
+       
     # Get environment action space information
     action_space = env.action_space
     is_continuous = isinstance(action_space, gym.spaces.Box)
@@ -66,6 +72,7 @@ def evaluate(data):
     
     # Compute descriptors
     act_diversity, weight_diversity = agent.get_descriptors()
+    # print(f"Episode reward: {rew_ep}, Action diversity: {act_diversity}, Weight diversity: {weight_diversity}")
     
     return rew_ep, (act_diversity, weight_diversity)
 
@@ -74,12 +81,19 @@ def parallel_val(candidates, args):
         return p.map(evaluate, [[c, json.loads(json.dumps(args))] for c in candidates])
     
 def launcher(config):
-    print(config)
+    # print(config)
     
-    optimizer = MAPElites(config)
+    if config["optimizer"] == "MAPElites":
+        optimizer = MAPElites(config)
+    elif config["optimizer"] == "CMAME":
+        optimizer = CMAME(config)
+    elif config["optimizer"] == "CMAMAE":
+        optimizer = CMAMAE(config)
+    else:
+        raise ValueError(f"Unknown optimizer: {config['optimizer']}")
     
     if config["wandb"]:
-        wb = wandb.init(project="qd-nchl-runs", name=f"{optimizer.__class__.__name__}_{config['task']}_{config['seed']}", config=config)
+        wb = wandb.init(project="qd-nchl-pyribs", name=f"{config['path_dir']}", config=config)
         
     os.makedirs(config["path_dir"], exist_ok=True)
     
@@ -89,9 +103,12 @@ def launcher(config):
     
     global_best_fitness = float("-inf")
     
+    
     for i in range(config["iterations"]):
         candidates = optimizer.ask()
+        
         res = parallel_val(candidates, config)
+        
         fitnesses = [r[0] for r in res]
         descriptors = [r[1] for r in res]
         
@@ -101,14 +118,35 @@ def launcher(config):
         
         optimizer.tell(fitnesses, descriptors)
         
-        log = "iteration "+ str(i) + "  " + str(max(fitnesses)) + "  " + str(np.mean(fitnesses)) + "  " + optimizer.get_stats()
+        global_best_fitness = max(global_best_fitness, max(fitnesses))
+        
+        stats = optimizer.get_stats()
+        log = "iteration "+ str(i) + "  " + str(max(fitnesses)) + "  " + str(np.mean(fitnesses)) + "  " + str(stats["num_elites"]) + "  " + str(stats["coverage"]) + "  " + str(stats["qd_score"]) + "  " + str(stats["obj_max"]) + "  " + str(stats["obj_mean"])
         if config["wandb"]:
-            wandb.log({"iteration": i, "max_fitness": max(fitnesses), "avg_fitness": np.mean(fitnesses), "global_best_fitness": global_best_fitness, "coverage": archive.coverage})
+            wandb.log({"iteration": i, "max_fitness": max(fitnesses), "avg_fitness": np.mean(fitnesses), "global_best_fitness": global_best_fitness, "num_elites": stats["num_elites"], "coverage": stats["coverage"], "qd_score": stats["qd_score"], "obj_max": stats["obj_max"], "obj_mean": stats["obj_mean"]})
         history_best_fitnesses.append(max(fitnesses))
         history_avg_fitnesses.append(np.mean(fitnesses))
         print(log)
         logs.append(log)
-        optimizer.visualize_archive()
+        
+        if DEBUG and i % 20 == 0:
+            optimizer.visualize_archive()
+            # Log best 3 elites measures
+            data = optimizer.archive.data()
+            objectives = data['objective']
+            best_indices = sorted(range(len(objectives)), key=lambda j: objectives[j], reverse=True)[:3]
+            logs_temp = []
+            for j, idx in enumerate(best_indices):
+                log_temp = f"Iteration {i} Elite {j+1}: Fitness: {objectives[idx]}, Measures: {data['measures'][idx]}"
+                logs_temp.append(log_temp)
+            with open(os.path.join(config["path_dir"], 'temp_best_elites.txt'), 'a+') as f:
+                for log_temp in logs_temp:
+                    f.write(log_temp + "\n") 
+                
+                
+        
+    # Save archive
+    optimizer.save_archive()
         
     # Save the best elite
     best_elite = optimizer.get_best()
@@ -116,44 +154,165 @@ def launcher(config):
     best_desc = best_elite['measures']
     best_ind = best_elite['solution']
     
-    print("Best fitness: ", best_fit)
-    print("Best descriptor: ", best_desc)
-    print("Best individual: ", best_ind)
+    # Save the best elite to a file
+    with open(os.path.join(config["path_dir"], 'best_elite.pkl'), 'wb') as f:
+        pickle.dump(best_elite, f)
+    
+    # print("Best fitness: ", best_fit)
+    # print("Best descriptor: ", best_desc)
+    # print("Best individual: ", best_ind)
     log = "Best fitness: " + str(best_fit) + "   Best descriptor: " + str(best_desc) + "   Best individual: " + str(best_ind)
     logs.append(log)
     
     save_log(logs, path_dir=config["path_dir"])
+    
+    # Log config and final stats
+    logs = []
+    logs.append("Configuration:")
+    logs.append(json.dumps(config, indent=4))
+    logs.append("Final Stats:")
+    stats = optimizer.get_stats()
+    # precision = optimizer.compute_archive_precision()
+    logs.append(f"Number of elites: {stats['num_elites']}")
+    logs.append(f"Coverage: {stats['coverage']}")
+    logs.append(f"QD Score: {stats['qd_score']}")
+    logs.append(f"Objective Max: {stats['obj_max']}")
+    logs.append(f"Objective Mean: {stats['obj_mean']}")
+    # logs.append(f"Archive Precision (RMSE): {precision}")
+    save_log(logs, path_dir=config["path_dir"], filename="final_stats.txt")
+    
+
+    # Log best 3 elites
+    logs = []
+    data = optimizer.archive.data()
+    objectives = data['objective']
+    best_indices = sorted(range(len(objectives)), key=lambda i: objectives[i], reverse=True)[:3]
+    for i, idx in enumerate(best_indices):
+        log = f"Elite {i+1}: Fitness: {objectives[idx]}, Solution: {data['solution'][idx]}, Measures: {data['measures'][idx]}"
+        print(log)
+        logs.append(log)
+        
+    save_log(logs, path_dir=config["path_dir"], filename="best_elites.txt")
     
     optimizer.visualize_archive()
     plot_history(history_avg_fitnesses, history_best_fitnesses, path_dir=config["path_dir"]) 
     
     if config["wandb"]:
         wandb.finish()
+        
+def run(n_run=1):
+    optimizers = ["MAPElites", "CMAME", "CMAMAE"]
     
-if __name__ == "__main__":
-    seed = random.randint(0, 10000)
-    if len(sys.argv) > 1:
-        seed = int(sys.argv[1])
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    seeds = [random.randint(0, 10000) for _ in range(n_run)]
     
-    print(f"Using seed: {seed}")
     config = {
-        "task": "LunarLander-v3",
-        "nodes": [8, 8, 4],
-        "seed": seed,
+        "task": "MountainCar-v0",
+        "nodes": [2, 8, 3],
         "dims": [10, 10],  
-        "ranges": [[0, 1], [0, 0.5]], 
+        "ranges": [[0, 1], [0, 1]], 
         "sigma": 0.1,
-        "iterations": 100,
-        "batch_size": 100,
-        "num_emitters": 1,
+        "iterations": 400, #300
+        "batch_size": 100, #100
+        "num_emitters": 2,
         "wandb": False,
     }
     
     agent = NCHL(config["nodes"])
     config["solution_dim"] = agent.nparams
-    config["path_dir"] = f"exp/{config['task']}_{config['seed']}_map_elites"
     
-    launcher(config)
+    for seed in seeds:
+        
+        config["seed"] = seed
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        
+        for optimizer in optimizers:
+            config["optimizer"] = optimizer
+            
+            if optimizer == "MAPElites":
+                config["ranges"] = [[0, 1], [0, 0.2]] # for MAPElites
+            else:
+                config["ranges"] = [[0, 1], [0, 1]]
+                
+            config["path_dir"] = f"eeexp/{config['optimizer']}_{config['task']}_{config['seed']}"
+            
+            print(f"Running with seed: {seed} and optimizer: {optimizer}")
+            launcher(config)
+            
+    config = {
+        "task": "LunarLander-v3",
+        "nodes": [8, 8, 4],
+        "dims": [10, 10],  
+        "ranges": [[0, 1], [0, 1]], 
+        "sigma": 0.1,
+        "iterations": 300, #300
+        "batch_size": 100, #100
+        "num_emitters": 2,
+        "wandb": False,
+    }
+    
+    agent = NCHL(config["nodes"])
+    config["solution_dim"] = agent.nparams
+    
+    for seed in seeds:
+        
+        config["seed"] = seed
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        
+        for optimizer in optimizers:
+            config["optimizer"] = optimizer
+            
+            if optimizer == "MAPElites":
+                config["ranges"] = [[0, 1], [0, 0.2]] # for MAPElites
+            else:
+                config["ranges"] = [[0, 1], [0, 1]]
+                
+            config["path_dir"] = f"eeexp/{config['optimizer']}_{config['task']}_{config['seed']}"
+            
+            print(f"Running with seed: {seed} and optimizer: {optimizer}")
+            launcher(config)
+    
+    config = {
+        "task": "CartPole-v1",
+        "nodes": [4, 4, 2],
+        "dims": [10, 10],  
+        "ranges": [[0, 1], [0, 1]], 
+        "sigma": 0.1,
+        "iterations": 400, #300
+        "batch_size": 100, #100
+        "num_emitters": 2,
+        "wandb": False,
+    }
+    
+    agent = NCHL(config["nodes"])
+    config["solution_dim"] = agent.nparams
+    
+    for seed in seeds:
+        
+        config["seed"] = seed
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        
+        for optimizer in optimizers:
+            config["optimizer"] = optimizer
+            
+            if optimizer == "MAPElites":
+                config["ranges"] = [[0, 1], [0, 0.2]] # for MAPElites
+            else:
+                config["ranges"] = [[0, 1], [0, 1]]
+                
+            config["path_dir"] = f"eeexp/{config['optimizer']}_{config['task']}_{config['seed']}"
+            
+            print(f"Running with seed: {seed} and optimizer: {optimizer}")
+            launcher(config)
+    
+if __name__ == "__main__":
+    n_run = 1
+    if len(sys.argv) > 1:
+        n_run = int(sys.argv[1])
+        
+    run(n_run)

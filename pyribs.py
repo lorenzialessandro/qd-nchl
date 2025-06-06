@@ -83,6 +83,7 @@ class MAPElites(QDBase):
                 sigma=self.config["sigma"],
                 x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
                 batch_size=self.config["batch_size"],
+                bounds= [(-2.0, 2.0)] * (self.config["solution_dim"]), 
 
             ) for _ in range(self.config["num_emitters"])
         ]
@@ -96,10 +97,11 @@ class CMAME(QDBase):
         return [
             EvolutionStrategyEmitter(
                 archive=self.archive,
-                sigma0=0.5,
+                sigma0=0.2,
                 ranker="2imp",
                 x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
-                batch_size=self.config["batch_size"]
+                batch_size=self.config["batch_size"],
+                bounds = [(-2.0, 2.0)] * (self.config["solution_dim"])
             ) for _ in range(self.config["num_emitters"])
         ]
 
@@ -115,9 +117,8 @@ class CMAMAE(QDBase):
             solution_dim=config["solution_dim"],
             dims=config["dims"],
             ranges=config["ranges"],
-            qd_score_offset=-600, #TODO: adjust this value based on your task and archive settings
             learning_rate=0.01,
-            threshold_min=-2500  #TODO: adjust this value based on your task and archive settings
+            threshold_min=-210
         )
 
         self.result_archive = GridArchive(
@@ -136,11 +137,12 @@ class CMAMAE(QDBase):
             EvolutionStrategyEmitter(
                 archive=self.archive,
                 x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
-                sigma0=0.5,
+                sigma0=0.2,
                 ranker="imp",
                 selection_rule="mu",
                 restart_rule="basic",
-                batch_size=self.config["batch_size"]
+                batch_size=self.config["batch_size"],
+                bounds = [(-2.0, 2.0)] * (self.config["solution_dim"])
             ) for _ in range(self.config["num_emitters"])
         ]
         

@@ -324,6 +324,7 @@ class NCHL(nn.Module):
             decorr = params[start + 2]
             eta = params[start + 3]
             
+            
             neuron.set_hebbian_params(pre=pre, post=0.0, corr=corr, decorr=decorr)
             neuron.set_eta(eta)
             start += 4
@@ -336,6 +337,7 @@ class NCHL(nn.Module):
                 corr = params[start + 2]
                 decorr = params[start + 3]
                 eta = params[start + 4]
+                
                 
                 neuron.set_hebbian_params(pre=pre, post=post, corr=corr, decorr=decorr)
                 neuron.set_eta(eta)
@@ -370,6 +372,8 @@ class NCHL(nn.Module):
             if neuron.weight_changes:
                 weight_change = np.mean(np.abs(neuron.weight_changes))
                 weight_changes.append(weight_change)
+                
+        # print(f"Weight changes: {weight_changes}")
                 
         # Standard deviation of the mean weight changes
         weight_diversity = np.std(weight_changes) if len(weight_changes) > 0 else 0.0
