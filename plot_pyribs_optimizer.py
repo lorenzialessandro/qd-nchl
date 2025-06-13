@@ -16,7 +16,6 @@ from pyribs import QDBase
 # Global variables
 descriptor_names = ["Activation Diversity", "Weight Change Diversity"]
 optimizers_names = ["MAPElites", "CMAME", "CMAMAE"]
-# optimizers_names = ["CMAME", "CMAMAE"]
 
 # Utility function
 def get_optimizer_paths(list_of_paths):
@@ -242,17 +241,52 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
     fig, axes = plt.subplots(1, n_optimizers, figsize=(5 * n_optimizers, 5))
     if n_optimizers == 1:
         axes = [axes]
+    
     all_best_fitnesses = []
     all_avg_fitnesses = []
     all_cum_best_fitnesses = []
-    for ax, optimizer_name in zip(axes, optimizers_names):
+    
+    # collect all data
+    for optimizer_name in optimizers_names:
         # Compute fitness history for this optimizer
         best_fitnesses, avg_fitnesses, cum_best_fitnesses = compute_fitness_history(optimizer_paths[optimizer_name])
         
         all_best_fitnesses.append(best_fitnesses)
         all_avg_fitnesses.append(avg_fitnesses)
         all_cum_best_fitnesses.append(cum_best_fitnesses)
-
+    
+    # Compute global min and max across all optimizers
+    all_values = []
+    
+    for i, (best_fitnesses, avg_fitnesses, cum_best_fitnesses) in enumerate(zip(all_best_fitnesses, all_avg_fitnesses, all_cum_best_fitnesses)):
+        # Collect cumulative best values with their confidence intervals
+        cum_best_values = np.mean(cum_best_fitnesses, axis=0)
+        cum_best_std = np.std(cum_best_fitnesses, axis=0)
+        
+        all_values.extend(cum_best_values - cum_best_std)
+        all_values.extend(cum_best_values + cum_best_std)
+        all_values.extend(cum_best_values)
+        
+        if complete:
+            # Collect best fitness values with their confidence intervals
+            best_values = np.mean(best_fitnesses, axis=0)
+            best_std = np.std(best_fitnesses, axis=0)
+            
+            all_values.extend(best_values - best_std)
+            all_values.extend(best_values + best_std)
+            all_values.extend(best_values)
+    
+    # Compute true global min and max
+    global_min = np.min(all_values)
+    global_max = np.max(all_values)
+    # Add some padding to the limits (5% of the range)
+    range_padding = (global_max - global_min) * 0.05
+    global_min -= range_padding
+    global_max += range_padding
+    
+    # create plots
+    for ax, optimizer_name, best_fitnesses, avg_fitnesses, cum_best_fitnesses in zip(axes, optimizers_names, all_best_fitnesses, all_avg_fitnesses, all_cum_best_fitnesses):
+        
         # Plot cumulative global best
         avg_cum_best = np.mean(cum_best_fitnesses, axis=0)
         std_cum_best = np.std(cum_best_fitnesses, axis=0)
@@ -267,14 +301,6 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
             ax.plot(avg_best_fitnesses, label="Avg Best Fitness")
             ax.fill_between(range(len(avg_best_fitnesses)), avg_best_fitnesses - std_best_fitnesses,
                             avg_best_fitnesses + std_best_fitnesses, alpha=0.2)
-
-        # if complete:
-        #     # Plot the average fitness
-        #     avg_avg_fitnesses = np.mean(avg_fitnesses, axis=0)
-        #     std_avg_fitnesses = np.std(avg_fitnesses, axis=0)
-        #     ax.plot(avg_avg_fitnesses, label="Avg Avg Fitness")
-        #     ax.fill_between(range(len(avg_avg_fitnesses)), avg_avg_fitnesses - std_avg_fitnesses,
-        #                     avg_avg_fitnesses + std_avg_fitnesses, alpha=0.2)
         
         if threshold is not None:
             ax.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
@@ -282,12 +308,14 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
         ax.set_title(f'{optimizer_name} Fitness History')
         ax.set_xlabel("Generation")
         ax.set_ylabel("Fitness")
-        ax.legend()
+        ax.legend(loc='lower right')
+        
+        # Set global y-axis limits
+        ax.set_ylim(global_min, global_max)
         
     plt.tight_layout()
     plt.savefig(os.path.join(path_dir, "fitness_history.png"), dpi=300, bbox_inches='tight')
-    plt.close()     
-
+    plt.close()
 # - 
 # Hebbian parameters
     
@@ -655,6 +683,8 @@ def plot_descriptors(list_of_paths, path_dir, k=5):
         ax.set_xlabel(descriptor_names[1])
         ax.set_ylabel(descriptor_names[0])
         # ax.legend()
+        ax.set_xlim(0, 1)  # Set x-axis limits
+        ax.set_ylim(0, 1)  # Set y-axis limits
         
     plt.suptitle(f"Best {k} Descriptors by Optimizer", fontsize=16)
     plt.tight_layout()

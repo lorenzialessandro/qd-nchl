@@ -10,8 +10,22 @@ from sklearn.decomposition import PCA
 import argparse
 from pathlib import Path
 from matplotlib import cm
+import json
 
 from network import NCHL
+
+# Optimizer names
+optimizers_names = ["MAPElites", "CMAME", "CMAMAE"]
+
+# Utility function
+def get_optimizer_paths(list_of_paths):
+    optimizer_paths = {name: [] for name in optimizers_names}
+    for path in list_of_paths:
+        for name in optimizers_names:
+            if name in path:
+                optimizer_paths[name].append(path)
+                break
+    return optimizer_paths
 
 def load_model(model_path):
     """Load a saved NCHL model"""
@@ -73,7 +87,6 @@ def run_test_rollouts(model, env, num_rollouts=3, steps=1000, debug=False):
                 # Use the model output to take an action
                 action_values = post_activation.cpu().numpy()
                 
-                #
                 if is_continuous:
                     # For continuous action spaces (like Ant-v5)
                     # Actions are already in the range [-1, 1] due to tanh activation
@@ -289,156 +302,83 @@ def project_trajectories_on_pca(trajectories, pcas, n_components=3, debug=False)
             print(f"Warning: Trajectory {traj_idx+1} has no valid projections")
     
     return projected_trajectories
-    
-def visualize_all_pca_trajectories_3d(all_projected_trajectories, output_dir=None):
+
+def visualize_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimizer, output_dir=None):
     """
-    Visualize PCA trajectories for all models in 3D.
+    Visualize PCA trajectories for all optimizers in 3D, with separate subplots for each optimizer.
     """
-    fig = plt.figure(figsize=(18, 6))
-    
     type_labels = ['Input Values', 'Pre-synaptic Values', 'Post-synaptic Values']
     data_types = ['input', 'pre_synaptic', 'post_synaptic']
     
-    for i, (data_type, type_label) in enumerate(zip(data_types, type_labels)):
-        ax = fig.add_subplot(1, 3, i+1, projection='3d')
-        for model_idx, projected_trajectories in enumerate(all_projected_trajectories):
-            for traj_idx, traj in enumerate(projected_trajectories):
-                if data_type not in traj or not traj[data_type]:
-                    continue
-                
-                # Extract data
-                data = np.array(traj[data_type])
-                steps = traj['steps']
-                
-                # Check if we have enough dimensions for a proper 3D plot
-                if data.shape[1] >= 2:
-                    # Use first two PCA components for x, y
-                    x, y = data[:, 0], data[:, 1]
+    # Create a figure with subplots: 3 columns (data types) x num_optimizers rows
+    n_optimizers = len(all_projected_trajectories_by_optimizer)
+    fig = plt.figure(figsize=(18, 6 * n_optimizers))
+    
+    # Color maps for different optimizers
+    optimizer_colors = {'MAPElites': 'tab:blue', 'CMAME': 'tab:orange', 'CMAMAE': 'tab:green'}
+    
+    for opt_idx, (optimizer_name, optimizer_trajectories) in enumerate(all_projected_trajectories_by_optimizer.items()):
+        for i, (data_type, type_label) in enumerate(zip(data_types, type_labels)):
+            ax = fig.add_subplot(n_optimizers, 3, opt_idx * 3 + i + 1, projection='3d')
+            
+            # Get base color for this optimizer
+            base_color = optimizer_colors.get(optimizer_name, 'tab:gray')
+            
+            for model_idx, projected_trajectories in enumerate(optimizer_trajectories):
+                for traj_idx, traj in enumerate(projected_trajectories):
+                    if data_type not in traj or not traj[data_type]:
+                        continue
                     
-                    # Plot the trajectory
-                    # ax.plot3D(x, y, steps, alpha=0.7, linewidth=2,
-                    #         label=f'Model {model_idx+1} Traj {traj_idx+1}' if i == 0 else "")
-                    ax.scatter3D(x, y, steps, alpha=0.5, s=50, marker='o',
-                                label=f'Model {model_idx+1} R. {traj_idx+1}' if i == 0 else "")
-                
-                    # # Mark start point (green circle)
-                    # ax.scatter3D(x[0], y[0], steps[0], color='green', s=80, marker='o',
-                    #            label='Start' if traj_idx == 0 else "")
+                    # Extract data
+                    data = np.array(traj[data_type])
+                    steps = traj['steps']
                     
-                    # # Mark end point (red cross)
-                    # ax.scatter3D(x[-1], y[-1], steps[-1], color='red', s=80, marker='x',
-                    #            label='End' if traj_idx == 0 else "")
-                
-                else:
-                    # If only one dimension, use time as second dimension
-                    x = data[:, 0]
-                    ax.plot3D(x, steps, steps, alpha=0.8, linewidth=2,
-                            label=f'Model {model_idx+1} Traj {traj_idx+1}' if i == 0 else "")
+                    # Check if we have enough dimensions for a proper 3D plot
+                    if data.shape[1] >= 2:
+                        # Use first two PCA components for x, y
+                        x, y = data[:, 0], data[:, 1]
+                        
+                        # Plot the trajectory with some transparency
+                        ax.scatter3D(x, y, steps, alpha=0.6, s=30, 
+                                   color=base_color, 
+                                   label=f'{optimizer_name} M{model_idx+1} R{traj_idx+1}' if i == 0 and model_idx == 0 and traj_idx == 0 else "")
                     
-        # Set labels
-        ax.set_xlabel('PC1')
-        ax.set_ylabel('PC2' if data.shape[1] >= 2 else 'Time Step')
-        ax.set_zlabel('Time Step')
-        ax.set_title(f'{type_label} in PCA Space')
-        # Add legend to first plot only
-        # if i == 0:
-        #     ax.legend(loc="lower left", ncol=len(all_projected_trajectories), bbox_to_anchor=(0, -0.3))
+                    else:
+                        # If only one dimension, use time as second dimension
+                        x = data[:, 0]
+                        ax.plot3D(x, steps, steps, alpha=0.7, linewidth=2, color=base_color,
+                                label=f'{optimizer_name} M{model_idx+1} R{traj_idx+1}' if i == 0 and model_idx == 0 and traj_idx == 0 else "")
+                        
+            # Set labels
+            ax.set_xlabel('PC1')
+            ax.set_ylabel('PC2' if data.shape[1] >= 2 else 'Time Step')
+            ax.set_zlabel('Time Step')
+            ax.set_title(f'{optimizer_name} - {type_label}')
+            
+            # Add legend only to the first column
+            if i == 0:
+                ax.legend(loc="upper left", fontsize='small')
+    
     plt.tight_layout()
     
     if output_dir:
-        plt.savefig(os.path.join(output_dir, '3d_pca_trajectories.png'), dpi=300, bbox_inches='tight')
-        print(f"PCA visualization saved to {os.path.join(output_dir, '3d_pca_trajectories.png')}")
-    plt.close(fig)
-    
-def visualize_all_pca_trajectories_means_3d(all_projected_trajectories, output_dir=None):
-    """
-    Visualize mean PCA trajectories for all models in 3D.
-    """
-    fig = plt.figure(figsize=(18, 6))
-    
-    type_labels = ['Input Values', 'Pre-synaptic Values', 'Post-synaptic Values']
-    data_types = ['input', 'pre_synaptic', 'post_synaptic']
-    
-    # compute mean trajectories for each model
-    mean_trajectories = []
-    for model_idx, projected_trajectories in enumerate(all_projected_trajectories):
-        # Collect trajectories by data_type across all sequences
-        collected = {dtype: [] for dtype in data_types}
-
-        for traj in projected_trajectories:
-            for dtype in data_types:
-                if dtype in traj and traj[dtype] is not None:
-                    collected[dtype].append(traj[dtype])  # shape: (time, components)
-
-        # Compute mean trajectory over models (axis=0)
-        mean_traj = {}
-        for dtype in data_types:
-            if collected[dtype]:
-                stacked = np.stack(collected[dtype], axis=0)  # shape: (num_models, time, components)
-                mean_traj[dtype] = np.mean(stacked, axis=0)   # shape: (time, components)
-            else:
-                mean_traj[dtype] = None
-
-        mean_trajectories.append(mean_traj)
-
-    for i, (data_type, type_label) in enumerate(zip(data_types, type_labels)):
-        ax = fig.add_subplot(1, 3, i+1, projection='3d')
-        
-        for model_idx, mean_traj in enumerate(mean_trajectories):
-            if data_type not in mean_traj or mean_traj[data_type] is None:
-                continue
-            
-            # Extract data
-            data = np.array(mean_traj[data_type])
-            steps = np.arange(data.shape[0])
-            
-            # Check if we have enough dimensions for a proper 3D plot
-            if data.shape[1] >= 2:
-                # Use first two PCA components for x, y
-                x, y = data[:, 0], data[:, 1]
-                
-                # Plot the trajectory
-                ax.plot3D(x, y, steps, alpha=0.7, linewidth=2,
-                        label=f'Model {model_idx+1}' if i == 0 else "")
-                ax.scatter3D(x, y, steps, alpha=0.5, s=100, marker='o',
-                            label=f'Model {model_idx+1}' if i == 0 else "")
-                
-            else:
-                # If only one dimension, use time as second dimension
-                x = data[:, 0]
-                ax.plot3D(x, steps, steps, alpha=0.8, linewidth=2,
-                        label=f'Model {model_idx+1}' if i == 0 else "")
-        
-        # Set labels
-        ax.set_xlabel('PC1')
-        ax.set_ylabel('PC2' if data.shape[1] >= 2 else 'Time Step')
-        ax.set_zlabel('Time Step')
-        ax.set_title(f'{type_label} in PCA Space')
-        
-        # Add legend to first plot only
-        if i == 0:
-            ax.legend(loc='upper left')
-    plt.tight_layout()
-    
-    if output_dir:
-        plt.savefig(os.path.join(output_dir, '3d_pca_trajectories_means.png'), dpi=300, bbox_inches='tight')
-        print(f"Mean PCA visualization saved to {os.path.join(output_dir, '3d_pca_trajectories_means.png')}")
-    
+        plt.savefig(os.path.join(output_dir, '3d_pca_trajectories_by_optimizer.png'), dpi=300, bbox_inches='tight')
+        print(f"Optimizer PCA visualization saved to {os.path.join(output_dir, '3d_pca_trajectories_by_optimizer.png')}")
     plt.close(fig)
 
-def visualize_all_pca_trajectories_combined(all_projected_trajectories, output_dir=None):
+def visualize_single_optimizer_pca_trajectories_3d(projected_trajectories, optimizer_name, output_dir=None):
     """
-    Visualize PCA trajectories for all models in a single figure with subplots.
+    Visualize PCA trajectories for a single optimizer with subplots for each model.
+    Similar to the original visualize_all_pca_trajectories_combined but for one optimizer.
     """
-
     # Data types to visualize
     data_types = ['input', 'pre_synaptic', 'post_synaptic']
     type_labels = ['Input Values', 'Pre-synaptic Values', 'Post-synaptic Values']
     
-    # Number of models
-    n_models = len(all_projected_trajectories)
+    # Number of models for this optimizer
+    n_models = len(projected_trajectories)
     if n_models == 0:
-        print("No models to visualize")
+        print(f"No models to visualize for {optimizer_name}")
         return
     
     # Create figure with subplots arranged by model (rows) and data type (columns)
@@ -449,7 +389,7 @@ def visualize_all_pca_trajectories_combined(all_projected_trajectories, output_d
     colors = plt.cm.tab10(np.linspace(0, 1, 10))
     
     # Plot for each model and data type
-    for model_idx, model_trajectories in enumerate(all_projected_trajectories):
+    for model_idx, model_trajectories in enumerate(projected_trajectories):
         for type_idx, (data_type, type_label) in enumerate(zip(data_types, type_labels)):
             # Create 3D subplot
             ax = fig.add_subplot(gs[model_idx, type_idx], projection='3d')
@@ -500,7 +440,7 @@ def visualize_all_pca_trajectories_combined(all_projected_trajectories, output_d
             ax.set_zlabel('Time Step')
             
             # Create title with model name and data type
-            ax.set_title(f'Model {model_idx+1} - {type_label}')
+            ax.set_title(f'{optimizer_name} Model {model_idx+1} - {type_label}')
             
             # Add legend only to the first plot of each row
             if type_idx == 0:
@@ -514,89 +454,21 @@ def visualize_all_pca_trajectories_combined(all_projected_trajectories, output_d
     
     # Save figure
     if output_dir:
-        plt.savefig(os.path.join(output_dir, 'all_models_pca_comparison.png'), dpi=300, bbox_inches='tight')
-        print(f"Combined PCA visualization saved to {os.path.join(output_dir, 'all_models_pca_comparison.png')}")
+        filename = f'{optimizer_name.lower()}_models_pca_comparison.png'
+        plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
+        print(f"{optimizer_name} PCA comparison saved to {os.path.join(output_dir, filename)}")
     
     plt.close(fig)
-    
-def visualize_reward_landscape_combined(all_trajectories, output_dir=None):
-    """
-    Visualize reward landscape for all models in a single figure with subplots.
-    """
-    
-    n_models = len(all_trajectories)
-    if n_models == 0:
-        print("No models to visualize")
-        return
-    # Create figure with subplots arranged by model (rows) and data type (columns)
-    n_cols = 3  # number of subplots per row
-    n_rows = (n_models + n_cols - 1) // n_cols  # ceil division
-    fig = plt.figure(figsize=(6 * n_cols, 5 * n_rows))
-    gs = gridspec.GridSpec(n_rows, n_cols, figure=fig)
-    
-    # Determine appropriate dimensions to visualize based on input size
-    sample_input = all_trajectories[0][0]['inputs'][0]
-    input_dims = len(sample_input)
 
-    # Select dimensions to plot based on environment
-    if input_dims == 4:  # Likely CartPole
-        dim1, dim2 = 0, 1  
-        x_label, y_label = 'Cart Position', 'Cart Velocity'
-    elif input_dims == 2:  # Likely MountainCar
-        dim1, dim2 = 0, 1
-        x_label, y_label = 'Position', 'Velocity'
-    elif input_dims == 8:  # Likely LunarLander
-        dim1, dim2 = 0, 1
-        x_label, y_label = 'X Position', 'Y Position'
-    else:
-        # For unknown environments, just use the first two dimensions
-        dim1, dim2 = 0, min(1, input_dims-1)
-        x_label, y_label = 'Dimension 1', 'Dimension 2'
-    
-    # Plot for each model and data type
-    for model_idx, model_trajectories in enumerate(all_trajectories):
-        # Extract state-reward pairs from all trajectories
-        states_dim1 = []
-        states_dim2 = []
-        rewards = []
-        for traj in model_trajectories:
-            for i, (state, reward) in enumerate(zip(traj['inputs'], traj['rewards'])):
-                # For some environments rewards come at the next step
-                states_dim1.append(state[dim1])
-                states_dim2.append(state[dim2])
-                rewards.append(reward)
-        # If we have enough data points, create a scatter plot
-        if states_dim1:
-            ax = fig.add_subplot(gs[model_idx // n_cols, model_idx % n_cols])
-            sc = ax.scatter(states_dim1, states_dim2, c=rewards, cmap='viridis', 
-                          alpha=0.6, s=30, edgecolors='none')
-            
-            ax.set_xlabel(x_label)
-            ax.set_ylabel(y_label)
-            ax.set_title(f'Model {model_idx+1} Reward Landscape')
-            ax.grid(True, linestyle='--', alpha=0.7)
-            
-            # Add colorbar
-            cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.01)
-            cbar.set_label('Reward')
-            
-    plt.tight_layout()
-    if output_dir:
-        plt.savefig(os.path.join(output_dir, 'reward_landscape_combined.png'), dpi=300, bbox_inches='tight')
-        print(f"Combined reward landscape visualization saved to {os.path.join(output_dir, 'reward_landscape_combined.png')}")
-        
-    plt.close(fig)
-    
-def visualize_reward_landscape_combined_3d(all_trajectories, output_dir=None):
+def visualize_single_optimizer_reward_landscape_combined(trajectories, optimizer_name, output_dir=None):
     """
-    Visualize reward landscape for all models in 3D with time on z-axis.
+    Visualize reward landscape for a single optimizer with subplots for each model.
     """
-    
-    n_models = len(all_trajectories)
+    n_models = len(trajectories)
     if n_models == 0:
-        print("No models to visualize")
+        print(f"No models to visualize for {optimizer_name}")
         return
-    
+        
     # Create figure with subplots arranged by model
     n_cols = 3  # number of subplots per row
     n_rows = (n_models + n_cols - 1) // n_cols  # ceil division
@@ -604,7 +476,7 @@ def visualize_reward_landscape_combined_3d(all_trajectories, output_dir=None):
     gs = gridspec.GridSpec(n_rows, n_cols, figure=fig)
     
     # Determine appropriate dimensions to visualize based on input size
-    sample_input = all_trajectories[0][0]['inputs'][0]
+    sample_input = trajectories[0][0]['inputs'][0]
     input_dims = len(sample_input)
 
     # Select dimensions to plot based on environment
@@ -623,7 +495,77 @@ def visualize_reward_landscape_combined_3d(all_trajectories, output_dir=None):
         x_label, y_label = 'Dimension 1', 'Dimension 2'
     
     # Plot for each model
-    for model_idx, model_trajectories in enumerate(all_trajectories):
+    for model_idx, model_trajectories in enumerate(trajectories):
+        # Extract state-reward pairs from all trajectories
+        states_dim1 = []
+        states_dim2 = []
+        rewards = []
+        for traj in model_trajectories:
+            for i, (state, reward) in enumerate(zip(traj['inputs'], traj['rewards'])):
+                states_dim1.append(state[dim1])
+                states_dim2.append(state[dim2])
+                rewards.append(reward)
+        
+        # If we have enough data points, create a scatter plot
+        if states_dim1:
+            ax = fig.add_subplot(gs[model_idx // n_cols, model_idx % n_cols])
+            sc = ax.scatter(states_dim1, states_dim2, c=rewards, cmap='viridis', 
+                          alpha=0.6, s=30, edgecolors='none')
+            
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            ax.set_title(f'{optimizer_name} Model {model_idx+1} Reward Landscape')
+            ax.grid(True, linestyle='--', alpha=0.7)
+            
+            # Add colorbar
+            cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.01)
+            cbar.set_label('Reward')
+            
+    plt.tight_layout()
+    
+    if output_dir:
+        filename = f'{optimizer_name.lower()}_reward_landscape_combined.png'
+        plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
+        print(f"{optimizer_name} reward landscape saved to {os.path.join(output_dir, filename)}")
+        
+    plt.close(fig)
+
+def visualize_single_optimizer_reward_landscape_3d(trajectories, optimizer_name, output_dir=None):
+    """
+    Visualize 3D reward landscape for a single optimizer with subplots for each model.
+    """
+    n_models = len(trajectories)
+    if n_models == 0:
+        print(f"No models to visualize for {optimizer_name}")
+        return
+    
+    # Create figure with subplots arranged by model
+    n_cols = 3  # number of subplots per row
+    n_rows = (n_models + n_cols - 1) // n_cols  # ceil division
+    fig = plt.figure(figsize=(6 * n_cols, 5 * n_rows))
+    gs = gridspec.GridSpec(n_rows, n_cols, figure=fig)
+    
+    # Determine appropriate dimensions to visualize based on input size
+    sample_input = trajectories[0][0]['inputs'][0]
+    input_dims = len(sample_input)
+
+    # Select dimensions to plot based on environment
+    if input_dims == 4:  # Likely CartPole
+        dim1, dim2 = 0, 1  
+        x_label, y_label = 'Cart Position', 'Cart Velocity'
+    elif input_dims == 2:  # Likely MountainCar
+        dim1, dim2 = 0, 1
+        x_label, y_label = 'Position', 'Velocity'
+    elif input_dims == 8:  # Likely LunarLander
+        dim1, dim2 = 0, 1
+        x_label, y_label = 'X Position', 'Y Position'
+    else:
+        # For unknown environments, just use the first two dimensions
+        dim1, dim2 = 0, min(1, input_dims-1)
+        x_label, y_label = 'Dimension 1', 'Dimension 2'
+    
+    # Plot for each model
+    for model_idx, model_trajectories in enumerate(trajectories):
         # Extract state-reward-time tuples from all trajectories
         states_dim1 = []
         states_dim2 = []
@@ -649,7 +591,7 @@ def visualize_reward_landscape_combined_3d(all_trajectories, output_dir=None):
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
             ax.set_zlabel('Time Step')
-            ax.set_title(f'Model {model_idx+1} 3D Reward Landscape')
+            ax.set_title(f'{optimizer_name} Model {model_idx+1} 3D Reward Landscape')
             
             # Add colorbar
             cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.1, shrink=0.8)
@@ -661,15 +603,172 @@ def visualize_reward_landscape_combined_3d(all_trajectories, output_dir=None):
     plt.tight_layout()
     
     if output_dir:
-        plt.savefig(os.path.join(output_dir, 'reward_landscape_3d_combined.png'), 
+        filename = f'{optimizer_name.lower()}_reward_landscape_3d_combined.png'
+        plt.savefig(os.path.join(output_dir, filename), 
                    dpi=300, bbox_inches='tight')
-        print(f"3D reward landscape visualization saved to {os.path.join(output_dir, 'reward_landscape_3d_combined.png')}")
+        print(f"{optimizer_name} 3D reward landscape saved to {os.path.join(output_dir, filename)}")
         
     plt.close(fig)
-   
-import json
+
+def visualize_optimizer_reward_landscape_combined(all_trajectories_by_optimizer, output_dir=None):
+    """
+    Visualize reward landscape for all optimizers in a single figure with subplots.
+    """
+    
+    # Determine appropriate dimensions to visualize based on input size
+    # Get sample from first available trajectory
+    sample_input = None
+    for optimizer_trajectories in all_trajectories_by_optimizer.values():
+        if optimizer_trajectories and optimizer_trajectories[0]:
+            sample_input = optimizer_trajectories[0][0]['inputs'][0]
+            break
+    
+    if sample_input is None:
+        print("No trajectory data available for reward landscape visualization")
+        return
+        
+    input_dims = len(sample_input)
+
+    # Select dimensions to plot based on environment
+    if input_dims == 4:  # Likely CartPole
+        dim1, dim2 = 0, 1  
+        x_label, y_label = 'Cart Position', 'Cart Velocity'
+    elif input_dims == 2:  # Likely MountainCar
+        dim1, dim2 = 0, 1
+        x_label, y_label = 'Position', 'Velocity'
+    elif input_dims == 8:  # Likely LunarLander
+        dim1, dim2 = 0, 1
+        x_label, y_label = 'X Position', 'Y Position'
+    else:
+        # For unknown environments, just use the first two dimensions
+        dim1, dim2 = 0, min(1, input_dims-1)
+        x_label, y_label = 'Dimension 1', 'Dimension 2'
+    
+    # Create figure with subplots for each optimizer
+    n_optimizers = len(all_trajectories_by_optimizer)
+    fig = plt.figure(figsize=(6 * n_optimizers, 5))
+    
+    for opt_idx, (optimizer_name, optimizer_trajectories) in enumerate(all_trajectories_by_optimizer.items()):
+        ax = fig.add_subplot(1, n_optimizers, opt_idx + 1)
+        
+        # Extract state-reward pairs from all trajectories for this optimizer
+        states_dim1 = []
+        states_dim2 = []
+        rewards = []
+        
+        for model_trajectories in optimizer_trajectories:
+            for traj in model_trajectories:
+                for i, (state, reward) in enumerate(zip(traj['inputs'], traj['rewards'])):
+                    states_dim1.append(state[dim1])
+                    states_dim2.append(state[dim2])
+                    rewards.append(reward)
+        
+        # If we have enough data points, create a scatter plot
+        if states_dim1:
+            sc = ax.scatter(states_dim1, states_dim2, c=rewards, cmap='viridis', 
+                          alpha=0.6, s=30, edgecolors='none')
+            
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            ax.set_title(f'{optimizer_name} Reward Landscape')
+            ax.grid(True, linestyle='--', alpha=0.7)
+            
+            # Add colorbar
+            cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.01)
+            cbar.set_label('Reward')
+            
+    plt.tight_layout()
+    
+    if output_dir:
+        plt.savefig(os.path.join(output_dir, 'reward_landscape_by_optimizer.png'), dpi=300, bbox_inches='tight')
+        print(f"Optimizer reward landscape visualization saved to {os.path.join(output_dir, 'reward_landscape_by_optimizer.png')}")
+        
+    plt.close(fig)
+
+def visualize_optimizer_reward_landscape_3d(all_trajectories_by_optimizer, output_dir=None):
+    """
+    Visualize 3D reward landscape for all optimizers with time on z-axis.
+    """
+    
+    # Determine appropriate dimensions to visualize based on input size
+    sample_input = None
+    for optimizer_trajectories in all_trajectories_by_optimizer.values():
+        if optimizer_trajectories and optimizer_trajectories[0]:
+            sample_input = optimizer_trajectories[0][0]['inputs'][0]
+            break
+    
+    if sample_input is None:
+        print("No trajectory data available for 3D reward landscape visualization")
+        return
+        
+    input_dims = len(sample_input)
+
+    # Select dimensions to plot based on environment
+    if input_dims == 4:  # Likely CartPole
+        dim1, dim2 = 0, 1  
+        x_label, y_label = 'Cart Position', 'Cart Velocity'
+    elif input_dims == 2:  # Likely MountainCar
+        dim1, dim2 = 0, 1
+        x_label, y_label = 'Position', 'Velocity'
+    elif input_dims == 8:  # Likely LunarLander
+        dim1, dim2 = 0, 1
+        x_label, y_label = 'X Position', 'Y Position'
+    else:
+        # For unknown environments, just use the first two dimensions
+        dim1, dim2 = 0, min(1, input_dims-1)
+        x_label, y_label = 'Dimension 1', 'Dimension 2'
+    
+    # Create figure with 3D subplots for each optimizer
+    n_optimizers = len(all_trajectories_by_optimizer)
+    fig = plt.figure(figsize=(6 * n_optimizers, 5))
+    
+    for opt_idx, (optimizer_name, optimizer_trajectories) in enumerate(all_trajectories_by_optimizer.items()):
+        ax = fig.add_subplot(1, n_optimizers, opt_idx + 1, projection='3d')
+        
+        # Extract state-reward-time tuples from all trajectories for this optimizer
+        states_dim1 = []
+        states_dim2 = []
+        rewards = []
+        time_steps = []
+        
+        for model_trajectories in optimizer_trajectories:
+            for traj_idx, traj in enumerate(model_trajectories):
+                for step_idx, (state, reward) in enumerate(zip(traj['inputs'], traj['rewards'])):
+                    states_dim1.append(state[dim1])
+                    states_dim2.append(state[dim2])
+                    rewards.append(reward)
+                    time_steps.append(step_idx)
+        
+        # If we have enough data points, create a 3D scatter plot
+        if states_dim1:
+            # Create 3D scatter plot with rewards as color
+            sc = ax.scatter3D(states_dim1, states_dim2, time_steps, 
+                            c=rewards, cmap='viridis', alpha=0.6, s=30)
+            
+            # Set labels
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            ax.set_zlabel('Time Step')
+            ax.set_title(f'{optimizer_name} 3D Reward Landscape')
+            
+            # Add colorbar
+            cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.1, shrink=0.8)
+            cbar.set_label('Reward')
+            
+            # Set consistent view angle for better comparison
+            ax.view_init(elev=20, azim=45)
+            
+    plt.tight_layout()
+    
+    if output_dir:
+        plt.savefig(os.path.join(output_dir, 'reward_landscape_3d_by_optimizer.png'), 
+                   dpi=300, bbox_inches='tight')
+        print(f"3D optimizer reward landscape visualization saved to {os.path.join(output_dir, 'reward_landscape_3d_by_optimizer.png')}")
+        
+    plt.close(fig)
+
 def main():
-    parser = argparse.ArgumentParser(description='NCHL Behavioral Analysis')
+    parser = argparse.ArgumentParser(description='NCHL Behavioral Analysis with Multiple Optimizers')
     parser.add_argument('path_file', type=str, 
                       help='Path to file containing paths to trained NCHL model files')
     parser.add_argument('nodes', type=json.loads)
@@ -684,71 +783,135 @@ def main():
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Read trained model paths
-    archive_paths = []  # list of paths to archives
-
+    # Read all archive paths
+    all_archive_paths = []
     with open(args.path_file, 'r') as file:
         for line in file.readlines():
             line = line.strip()
-            archive_paths.append(line + '/archive.pkl')
+            all_archive_paths.append(line + '/archive.pkl')
     
-    # Process trained models
-    print("Processing trained models...")
-    all_trajectories = []
-    all_projected_trajectories = []
+    # Group paths by optimizer
+    optimizer_paths = get_optimizer_paths(all_archive_paths)
     
-    for i, path in enumerate(archive_paths):
-        print(f"Analyzing best model of archive: {path}")
-        archive = pickle.load(open(path, 'rb'))
-        best_elite = archive.best_elite
+    print("Processing trained models by optimizer...")
+    print(f"Found optimizers: {list(optimizer_paths.keys())}")
+    for opt_name, paths in optimizer_paths.items():
+        print(f"  {opt_name}: {len(paths)} models")
+    
+    # Process models for each optimizer
+    all_trajectories_by_optimizer = {}
+    all_projected_trajectories_by_optimizer = {}
+    
+    for optimizer_name, archive_paths in optimizer_paths.items():
+        if not archive_paths:  # Skip if no paths for this optimizer
+            continue
+            
+        print(f"\nAnalyzing {optimizer_name} models...")
+        optimizer_trajectories = []
+        optimizer_projected_trajectories = []
         
-        # Load model
-        model = NCHL(nodes=args.nodes)
-        model.set_params(best_elite['solution'])
-        
-        env = gym.make(args.task)
+        for i, path in enumerate(archive_paths):
+            print(f"  Analyzing model {i+1}/{len(archive_paths)}: {path}")
+            
+            try:
+                archive = pickle.load(open(path, 'rb'))
+                best_elite = archive.best_elite
+                
+                # Load model
+                model = NCHL(nodes=args.nodes)
+                model.set_params(best_elite['solution'])
+                
+                env = gym.make(args.task)
 
-        # Run test rollouts
-        trajectories = run_test_rollouts(model, env, num_rollouts=args.num_rollouts, 
-                                       steps=args.steps, debug=args.debug)
+                # Run test rollouts
+                trajectories = run_test_rollouts(model, env, num_rollouts=args.num_rollouts, 
+                                               steps=args.steps, debug=args.debug)
+                
+                # Perform PCA analysis
+                results, input_pcas, pre_pcas, post_pcas = perform_pca_analysis(
+                    trajectories, n_components=args.n_components, debug=args.debug)
+                
+                # Store PCAs for projection
+                pcas = {
+                    'input': input_pcas,
+                    'pre_synaptic': pre_pcas,
+                    'post_synaptic': post_pcas
+                }
+                
+                # Project trajectories onto PCA space
+                projected_trajectories = project_trajectories_on_pca(
+                    trajectories, pcas, n_components=args.n_components, debug=args.debug)
+                
+                # Store results for this model
+                optimizer_trajectories.append(trajectories)
+                optimizer_projected_trajectories.append(projected_trajectories)
+                
+                # Close environment
+                env.close()
+                
+            except Exception as e:
+                print(f"    Error processing {path}: {e}")
+                continue
         
-        # Perform PCA analysis
-        results, input_pcas, pre_pcas, post_pcas = perform_pca_analysis(
-            trajectories, n_components=args.n_components, debug=args.debug)
+        # Store results for this optimizer
+        if optimizer_trajectories:  # Only store if we have valid data
+            all_trajectories_by_optimizer[optimizer_name] = optimizer_trajectories
+            all_projected_trajectories_by_optimizer[optimizer_name] = optimizer_projected_trajectories
+    
+    # Generate visualizations comparing optimizers
+    print("\nGenerating optimizer comparison visualizations...")
+    
+    # Visualize PCA trajectories by optimizer (comparison plots)
+    visualize_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimizer, args.output_dir)
+    
+    # Visualize reward landscapes by optimizer (comparison plots)
+    visualize_optimizer_reward_landscape_combined(all_trajectories_by_optimizer, args.output_dir)
+    visualize_optimizer_reward_landscape_3d(all_trajectories_by_optimizer, args.output_dir)
+    
+    # Generate individual plots for each optimizer
+    print("\nGenerating individual optimizer visualizations...")
+    for optimizer_name, optimizer_trajectories in all_trajectories_by_optimizer.items():
+        print(f"  Generating plots for {optimizer_name}...")
         
-        # Store PCAs for projection
-        pcas = {
-            'input': input_pcas,
-            'pre_synaptic': pre_pcas,
-            'post_synaptic': post_pcas
-        }
+        # Individual PCA trajectories plot for this optimizer
+        if optimizer_name in all_projected_trajectories_by_optimizer:
+            visualize_single_optimizer_pca_trajectories_3d(
+                all_projected_trajectories_by_optimizer[optimizer_name], 
+                optimizer_name, 
+                args.output_dir
+            )
         
-        # Project trajectories onto PCA space
-        projected_trajectories = project_trajectories_on_pca(
-            trajectories, pcas, n_components=args.n_components, debug=args.debug)
+        # Individual reward landscape plots for this optimizer
+        visualize_single_optimizer_reward_landscape_combined(
+            optimizer_trajectories, 
+            optimizer_name, 
+            args.output_dir
+        )
+        visualize_single_optimizer_reward_landscape_3d(
+            optimizer_trajectories, 
+            optimizer_name, 
+            args.output_dir
+        )
+    
+    # Generate summary statistics
+    print("\nSummary Statistics by Optimizer:")
+    for optimizer_name, optimizer_trajectories in all_trajectories_by_optimizer.items():
+        total_trajectories = sum(len(model_trajs) for model_trajs in optimizer_trajectories)
+        avg_rewards = []
         
-        # Store results
-        all_trajectories.append(trajectories)
-        all_projected_trajectories.append(projected_trajectories)
+        for model_trajs in optimizer_trajectories:
+            for traj in model_trajs:
+                avg_rewards.append(sum(traj['rewards']))
         
-        # Close environment
-        env.close()
+        if avg_rewards:
+            print(f"  {optimizer_name}:")
+            print(f"    Models: {len(optimizer_trajectories)}")
+            print(f"    Total trajectories: {total_trajectories}")
+            print(f"    Mean episode reward: {np.mean(avg_rewards):.2f} ± {np.std(avg_rewards):.2f}")
+            print(f"    Max episode reward: {np.max(avg_rewards):.2f}")
+            print(f"    Min episode reward: {np.min(avg_rewards):.2f}")
     
-    # -
-    
-    # Visualize PCA trajectories for models
-    visualize_all_pca_trajectories_3d(all_projected_trajectories, args.output_dir)
-    visualize_all_pca_trajectories_means_3d(all_projected_trajectories, args.output_dir)
-    
-    # Visualize combined PCA trajectories
-    # visualize_all_pca_trajectories_combined(all_projected_trajectories, args.output_dir)
-    
-    # Visualize reward landscapes for models
-    visualize_reward_landscape_combined(all_trajectories, args.output_dir)
-    visualize_reward_landscape_combined_3d(all_trajectories, args.output_dir)
-    
-    
-    print("Analysis complete!")
+    print("\nAnalysis complete!")
 
 
 if __name__ == "__main__":
