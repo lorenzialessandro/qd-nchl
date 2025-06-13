@@ -1,0 +1,38 @@
+Configuration:
+{
+    "task": "MountainCar-v0",
+    "nodes": [
+        2,
+        8,
+        3
+    ],
+    "dims": [
+        10,
+        10
+    ],
+    "ranges": [
+        [
+            0,
+            1
+        ],
+        [
+            0,
+            1
+        ]
+    ],
+    "sigma": 0.1,
+    "iterations": 300,
+    "batch_size": 100,
+    "num_emitters": 2,
+    "wandb": false,
+    "solution_dim": 60,
+    "seed": 4724,
+    "optimizer": "CMAMAE",
+    "path_dir": "expruns/CMAMAE_MountainCar-v0_4724"
+}
+Final Stats:
+Number of elites: 97
+Coverage: 0.97
+QD Score: -13378.0
+Objective Max: -103.0
+Objective Mean: -137.91752577319588

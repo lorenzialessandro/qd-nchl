@@ -1,0 +1,38 @@
+Configuration:
+{
+    "task": "LunarLander-v3",
+    "nodes": [
+        8,
+        8,
+        4
+    ],
+    "dims": [
+        10,
+        10
+    ],
+    "ranges": [
+        [
+            0,
+            1
+        ],
+        [
+            0,
+            0.2
+        ]
+    ],
+    "sigma": 0.1,
+    "iterations": 300,
+    "batch_size": 100,
+    "num_emitters": 2,
+    "wandb": false,
+    "solution_dim": 88,
+    "seed": 6319,
+    "optimizer": "MAPElites",
+    "path_dir": "expruns/MAPElites_LunarLander-v3_6319"
+}
+Final Stats:
+Number of elites: 72
+Coverage: 0.72
+QD Score: 46256.13903605903
+Objective Max: 270.80461787028617
+Objective Mean: 42.446375500819855

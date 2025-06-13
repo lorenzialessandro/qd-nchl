@@ -1,0 +1,38 @@
+Configuration:
+{
+    "task": "CartPole-v1",
+    "nodes": [
+        4,
+        4,
+        2
+    ],
+    "dims": [
+        10,
+        10
+    ],
+    "ranges": [
+        [
+            0,
+            1
+        ],
+        [
+            0,
+            1
+        ]
+    ],
+    "sigma": 0.1,
+    "iterations": 300,
+    "batch_size": 100,
+    "num_emitters": 2,
+    "wandb": false,
+    "solution_dim": 44,
+    "seed": 9212,
+    "optimizer": "CMAME",
+    "path_dir": "expruns/CMAME_CartPole-v1_9212"
+}
+Final Stats:
+Number of elites: 88
+Coverage: 0.88
+QD Score: 90379.0
+Objective Max: 500.0
+Objective Mean: 427.03409090909093

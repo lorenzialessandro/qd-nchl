@@ -1,0 +1,38 @@
+Configuration:
+{
+    "task": "LunarLander-v3",
+    "nodes": [
+        8,
+        8,
+        4
+    ],
+    "dims": [
+        10,
+        10
+    ],
+    "ranges": [
+        [
+            0,
+            1
+        ],
+        [
+            0,
+            1
+        ]
+    ],
+    "sigma": 0.1,
+    "iterations": 300,
+    "batch_size": 100,
+    "num_emitters": 2,
+    "wandb": false,
+    "solution_dim": 88,
+    "seed": 8748,
+    "optimizer": "CMAME",
+    "path_dir": "expruns/CMAME_LunarLander-v3_8748"
+}
+Final Stats:
+Number of elites: 80
+Coverage: 0.8
+QD Score: 52101.96650737015
+Objective Max: 285.64153083901795
+Objective Mean: 51.274581342126815

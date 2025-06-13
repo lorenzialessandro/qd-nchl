@@ -1,0 +1,38 @@
+Configuration:
+{
+    "task": "MountainCar-v0",
+    "nodes": [
+        2,
+        8,
+        3
+    ],
+    "dims": [
+        10,
+        10
+    ],
+    "ranges": [
+        [
+            0,
+            1
+        ],
+        [
+            0,
+            1
+        ]
+    ],
+    "sigma": 0.1,
+    "iterations": 300,
+    "batch_size": 100,
+    "num_emitters": 2,
+    "wandb": false,
+    "solution_dim": 60,
+    "seed": 8748,
+    "optimizer": "CMAME",
+    "path_dir": "expruns/CMAME_MountainCar-v0_8748"
+}
+Final Stats:
+Number of elites: 89
+Coverage: 0.89
+QD Score: 42953.0
+Objective Max: -84.0
+Objective Mean: -117.38202247191012
