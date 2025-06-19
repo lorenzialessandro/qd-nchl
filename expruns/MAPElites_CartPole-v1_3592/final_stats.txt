@@ -1,0 +1,38 @@
+Configuration:
+{
+    "task": "CartPole-v1",
+    "nodes": [
+        4,
+        4,
+        2
+    ],
+    "dims": [
+        10,
+        10
+    ],
+    "ranges": [
+        [
+            0,
+            1
+        ],
+        [
+            0,
+            1
+        ]
+    ],
+    "sigma": 0.1,
+    "iterations": 300,
+    "batch_size": 100,
+    "num_emitters": 2,
+    "wandb": false,
+    "solution_dim": 44,
+    "seed": 3592,
+    "optimizer": "MAPElites",
+    "path_dir": "expruns_map/MAPElites_CartPole-v1_3592"
+}
+Final Stats:
+Number of elites: 79
+Coverage: 0.79
+QD Score: 83973.0
+Objective Max: 500.0
+Objective Mean: 462.9493670886076

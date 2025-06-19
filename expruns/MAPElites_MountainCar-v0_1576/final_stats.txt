@@ -1,0 +1,38 @@
+Configuration:
+{
+    "task": "MountainCar-v0",
+    "nodes": [
+        2,
+        8,
+        3
+    ],
+    "dims": [
+        10,
+        10
+    ],
+    "ranges": [
+        [
+            0,
+            1
+        ],
+        [
+            0,
+            1
+        ]
+    ],
+    "sigma": 0.1,
+    "iterations": 300,
+    "batch_size": 100,
+    "num_emitters": 2,
+    "wandb": false,
+    "solution_dim": 60,
+    "seed": 1576,
+    "optimizer": "MAPElites",
+    "path_dir": "expruns_map/MAPElites_MountainCar-v0_1576"
+}
+Final Stats:
+Number of elites: 83
+Coverage: 0.83
+QD Score: 38551.0
+Objective Max: -83.0
+Objective Mean: -135.53012048192772
