@@ -137,7 +137,7 @@ class CMAMAE(QDBase):
             EvolutionStrategyEmitter(
                 archive=self.archive,
                 x0=np.random.uniform(-1, 1, self.config["solution_dim"]),
-                sigma0=0.2,
+                sigma0=0.1,
                 ranker="imp",
                 selection_rule="mu",
                 restart_rule="basic",

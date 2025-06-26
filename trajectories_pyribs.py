@@ -4,6 +4,7 @@ import os
 import pickle
 import gymnasium as gym
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.gridspec as gridspec
 from sklearn.decomposition import PCA
@@ -13,6 +14,17 @@ from matplotlib import cm
 import json
 
 from network import NCHL
+
+import scienceplots
+plt.style.use('science')
+
+# Global font settings
+mpl.rcParams['axes.titlesize'] = 25         # Title font size
+mpl.rcParams['figure.titlesize'] = 25      # Figure title font size
+mpl.rcParams['axes.labelsize'] = 15         # x, y, z label font size
+mpl.rcParams['xtick.labelsize'] = 15
+mpl.rcParams['ytick.labelsize'] = 15
+mpl.rcParams['legend.fontsize'] = 15       # Legend font size
 
 # Optimizer names
 optimizers_names = ["MAPElites", "CMAME", "CMAMAE"]
@@ -31,6 +43,19 @@ def load_model(model_path):
     """Load a saved NCHL model"""
     print(f"Loading model from {model_path}...")
     return NCHL.load(model_path)
+
+def convert_optimizer_name(name):
+    """
+    Convert optimizer name to a more readable format.
+    """
+    if name == "MAPElites":
+        return "MAP-Elites"
+    elif name == "CMAME":
+        return "CMA-ME"
+    elif name == "CMAMAE":
+        return "CMA-MAE"
+    else:
+        return name
 
 def run_test_rollouts(model, env, num_rollouts=3, steps=1000, debug=False):
     """
@@ -303,7 +328,7 @@ def project_trajectories_on_pca(trajectories, pcas, n_components=3, debug=False)
     
     return projected_trajectories
 
-def visualize_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimizer, output_dir=None):
+def visualize_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimizer, output_dir=None, save_pdf=False):
     """
     Visualize PCA trajectories for all optimizers in 3D, with separate subplots for each optimizer.
     """
@@ -339,7 +364,7 @@ def visualize_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimi
                         x, y = data[:, 0], data[:, 1]
                         
                         # Plot the trajectory with some transparency
-                        ax.scatter3D(x, y, steps, alpha=0.6, s=30, 
+                        ax.scatter3D(x, y, steps, alpha=0.6, s=100, 
                                    color=base_color, 
                                    label=f'{optimizer_name} M{model_idx+1} R{traj_idx+1}' if i == 0 and model_idx == 0 and traj_idx == 0 else "")
                     
@@ -350,23 +375,162 @@ def visualize_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimi
                                 label=f'{optimizer_name} M{model_idx+1} R{traj_idx+1}' if i == 0 and model_idx == 0 and traj_idx == 0 else "")
                         
             # Set labels
-            ax.set_xlabel('PC1')
-            ax.set_ylabel('PC2' if data.shape[1] >= 2 else 'Time Step')
-            ax.set_zlabel('Time Step')
-            ax.set_title(f'{optimizer_name} - {type_label}')
+            ax.set_xlabel('PC1', labelpad=15)
+            ax.set_ylabel('PC2' if data.shape[1] >= 2 else 'Time Step', labelpad=15)
+            ax.set_zlabel('Time Step', labelpad=15)
+            if opt_idx==0:
+                ax.set_title(f'{type_label}')
             
-            # Add legend only to the first column
-            if i == 0:
-                ax.legend(loc="upper left", fontsize='small')
-    
+            # Set view angle for better comparison
+            ax.view_init(elev=20, azim=45)
+            
+            # Set labels and title
+            ax.set_xlabel('PC1', labelpad=15)
+            ax.set_ylabel('PC2', labelpad=15)
+            ax.set_zlabel('Time Step', labelpad=15)
+            
+            ax.grid(True, linestyle='--', alpha=0.3)
+            
+            # Improve tick labels
+            ax.tick_params(axis='x', pad=5)
+            ax.tick_params(axis='y', pad=5)
+            ax.tick_params(axis='z', pad=5)
+        
     plt.tight_layout()
     
+    # Add unique legend for each optimizer with rectangle as marker
+    from matplotlib.patches import Rectangle
+    handles = []
+    labels = []
+    for opt_name, color in optimizer_colors.items():
+        rect = Rectangle((0, 0), 1, 1, color=color)  # proxy artist
+        handles.append(rect)
+        labels.append(convert_optimizer_name(opt_name))
+
+    # Add legend
+    fig.legend(handles, labels, loc='lower center', ncol=len(optimizer_colors), fontsize=20)
+    # add space for the legend
+    plt.subplots_adjust(bottom=0.08)
+    
+    extension = 'pdf' if save_pdf else 'png'
     if output_dir:
-        plt.savefig(os.path.join(output_dir, '3d_pca_trajectories_by_optimizer.png'), dpi=300, bbox_inches='tight')
+        plt.savefig(os.path.join(output_dir, f'3d_pca_trajectories_by_optimizer.{extension}'), dpi=300, bbox_inches='tight')
         print(f"Optimizer PCA visualization saved to {os.path.join(output_dir, '3d_pca_trajectories_by_optimizer.png')}")
     plt.close(fig)
+    
+def visualize_combined_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimizer, output_dir=None, save_pdf=False):
+    """
+    Visualize PCA trajectories for all optimizers in 3D, with all optimizers combined in each subplot.
+    Creates 3 subplots (Input, Pre-synaptic, Post-synaptic) with trajectories colored by optimizer.
+    """
+    type_labels = ['Input', 'Pre-synaptic', 'Post-synaptic']
+    data_types = ['input', 'pre_synaptic', 'post_synaptic']
+    
+    # Create a figure with 3 subplots (one for each data type)
+    fig = plt.figure(figsize=(18, 6))
+    
+    # Color maps for different optimizers
+    optimizer_colors = {'MAPElites': 'tab:blue', 'CMAME': 'tab:orange', 'CMAMAE': 'tab:green'}
+    
+    for i, (data_type, type_label) in enumerate(zip(data_types, type_labels)):
+        ax = fig.add_subplot(1, 3, i + 1, projection='3d')
+        
+        # Track if we've added legend entries for each optimizer
+        legend_added = {opt_name: False for opt_name in optimizer_colors.keys()}
+        
+        # Plot trajectories for all optimizers in this subplot
+        for optimizer_name, optimizer_trajectories in all_projected_trajectories_by_optimizer.items():
+            # Get color for this optimizer
+            color = optimizer_colors.get(optimizer_name, 'tab:gray')
+            
+            for model_idx, projected_trajectories in enumerate(optimizer_trajectories):
+                for traj_idx, traj in enumerate(projected_trajectories):
+                    if data_type not in traj or not traj[data_type]:
+                        continue
+                    
+                    # Extract data
+                    data = np.array(traj[data_type])
+                    steps = np.array(traj['steps'])
+                    
+                    # Check if we have enough dimensions for a proper 3D plot
+                    if data.shape[1] >= 2:
+                        # Use first two PCA components for x, y and time steps for z
+                        x, y = data[:, 0], data[:, 1]
+                        
+                        # Plot the trajectory with some transparency
+                        label = convert_optimizer_name(optimizer_name) if not legend_added[optimizer_name] else ""
+                        ax.scatter3D(x, y, steps, alpha=0.2, s=100, 
+                                   color=color, label=label)
+                        
+                        # Mark the legend as added for this optimizer
+                        if not legend_added[optimizer_name]:
+                            legend_added[optimizer_name] = True
+                    
+                    elif data.shape[1] == 1:
+                        # If only one dimension, use first PC for x, time for y and z
+                        x = data[:, 0]
+                        
+                        label = optimizer_name if not legend_added[optimizer_name] else ""
+                        ax.plot3D(x, steps, steps, alpha=0.1, linewidth=1.0, 
+                                color=color, label=label)
+                        
+                        # Mark the legend as added for this optimizer
+                        if not legend_added[optimizer_name]:
+                            legend_added[optimizer_name] = True
+                            
+        # Add padding to increase visibility
+        ax.set_box_aspect([1, 1, 0.5])  # Aspect ratio for better visibility
+        # Set view angle for better comparison
+        ax.view_init(elev=20, azim=45)
+        
+        # Set labels and title
+        ax.set_xlabel('PC1', labelpad=15)
+        ax.set_ylabel('PC2', labelpad=15)
+        ax.set_zlabel('Time Step', labelpad=15)
+        ax.set_title(f'{type_label}')
+        
+        ax.grid(True, linestyle='--', alpha=0.3)
+        
+        # Improve tick labels
+        ax.tick_params(axis='x', pad=5)
+        ax.tick_params(axis='y', pad=5)
+        ax.tick_params(axis='z', pad=5)
+        
+    
+    plt.tight_layout(pad=1.0)
+    
+    # Add unique legend for all optimizers
+    handles = []
+    labels = []
+    for opt_name, color in optimizer_colors.items():
+        if not legend_added[opt_name]:
+            continue
+        handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=12))
+        labels.append(convert_optimizer_name(opt_name))
+    fig.legend(handles, labels, loc='lower center', ncol=len(optimizer_colors))
+    
+    # add space for the legend
+    plt.subplots_adjust(bottom=0.15)
+    
+    # Enable and style 3D grid lines manually
+    for ax in fig.get_axes():        
+        for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
+            axis._axinfo["grid"]['color'] =  (0.5, 0.5, 0.5, 0.3)  # RGBA gray with transparency
+            axis._axinfo["grid"]['linestyle'] = '--'
+            axis._axinfo["grid"]['linewidth'] = 0.2
+            axis._axinfo["grid"]['visible'] = True
 
-def visualize_single_optimizer_pca_trajectories_3d(projected_trajectories, optimizer_name, output_dir=None):
+    # Save the plot
+    extension = 'pdf' if save_pdf else 'png'
+    if output_dir:
+        filename = f'combined_pca_trajectories_comparison.{extension}'
+        filepath = os.path.join(output_dir, filename)
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        print(f"Combined optimizer PCA visualization saved to {filepath}")
+    
+    plt.close(fig)
+
+def visualize_single_optimizer_pca_trajectories_3d(projected_trajectories, optimizer_name, output_dir=None, save_pdf=False):
     """
     Visualize PCA trajectories for a single optimizer with subplots for each model.
     Similar to the original visualize_all_pca_trajectories_combined but for one optimizer.
@@ -452,15 +616,16 @@ def visualize_single_optimizer_pca_trajectories_3d(projected_trajectories, optim
     # Adjust layout
     plt.tight_layout()
     
+    extension = 'pdf' if save_pdf else 'png'
     # Save figure
     if output_dir:
-        filename = f'{optimizer_name.lower()}_models_pca_comparison.png'
+        filename = f'{optimizer_name.lower()}_models_pca_comparison.{extension}'
         plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
         print(f"{optimizer_name} PCA comparison saved to {os.path.join(output_dir, filename)}")
     
     plt.close(fig)
 
-def visualize_single_optimizer_reward_landscape_combined(trajectories, optimizer_name, output_dir=None):
+def visualize_single_optimizer_reward_landscape_combined(trajectories, optimizer_name, output_dir=None, save_pdf=False):
     """
     Visualize reward landscape for a single optimizer with subplots for each model.
     """
@@ -522,15 +687,15 @@ def visualize_single_optimizer_reward_landscape_combined(trajectories, optimizer
             cbar.set_label('Reward')
             
     plt.tight_layout()
-    
+    extension = 'pdf' if save_pdf else 'png'
     if output_dir:
-        filename = f'{optimizer_name.lower()}_reward_landscape_combined.png'
+        filename = f'{optimizer_name.lower()}_reward_landscape_combined.{extension}'
         plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
         print(f"{optimizer_name} reward landscape saved to {os.path.join(output_dir, filename)}")
         
     plt.close(fig)
 
-def visualize_single_optimizer_reward_landscape_3d(trajectories, optimizer_name, output_dir=None):
+def visualize_single_optimizer_reward_landscape_3d(trajectories, optimizer_name, output_dir=None, save_pdf=False):
     """
     Visualize 3D reward landscape for a single optimizer with subplots for each model.
     """
@@ -601,16 +766,16 @@ def visualize_single_optimizer_reward_landscape_3d(trajectories, optimizer_name,
             ax.view_init(elev=20, azim=45)
             
     plt.tight_layout()
-    
+    extension = 'pdf' if save_pdf else 'png'
     if output_dir:
-        filename = f'{optimizer_name.lower()}_reward_landscape_3d_combined.png'
+        filename = f'{optimizer_name.lower()}_reward_landscape_3d_combined.{extension}'
         plt.savefig(os.path.join(output_dir, filename), 
                    dpi=300, bbox_inches='tight')
         print(f"{optimizer_name} 3D reward landscape saved to {os.path.join(output_dir, filename)}")
         
     plt.close(fig)
 
-def visualize_optimizer_reward_landscape_combined(all_trajectories_by_optimizer, output_dir=None):
+def visualize_optimizer_reward_landscape_combined(all_trajectories_by_optimizer, output_dir=None, save_pdf=False):
     """
     Visualize reward landscape for all optimizers in a single figure with subplots.
     """
@@ -646,7 +811,22 @@ def visualize_optimizer_reward_landscape_combined(all_trajectories_by_optimizer,
     
     # Create figure with subplots for each optimizer
     n_optimizers = len(all_trajectories_by_optimizer)
-    fig = plt.figure(figsize=(6 * n_optimizers, 5))
+    fig = plt.figure(figsize=(6 * n_optimizers, 6))
+    
+    # Compute limit for axes based on all trajectories
+    min_x = float('inf')
+    max_x = float('-inf')
+    min_y = float('inf')
+    max_y = float('-inf')
+    for optimizer_trajectories in all_trajectories_by_optimizer.values():
+        for model_trajectories in optimizer_trajectories:
+            for traj in model_trajectories:
+                for state in traj['inputs']:
+                    min_x = min(min_x, state[dim1])
+                    max_x = max(max_x, state[dim1])
+                    min_y = min(min_y, state[dim2])
+                    max_y = max(max_y, state[dim2])
+    
     
     for opt_idx, (optimizer_name, optimizer_trajectories) in enumerate(all_trajectories_by_optimizer.items()):
         ax = fig.add_subplot(1, n_optimizers, opt_idx + 1)
@@ -665,27 +845,31 @@ def visualize_optimizer_reward_landscape_combined(all_trajectories_by_optimizer,
         
         # If we have enough data points, create a scatter plot
         if states_dim1:
-            sc = ax.scatter(states_dim1, states_dim2, c=rewards, cmap='viridis', 
-                          alpha=0.6, s=30, edgecolors='none')
+            sc = ax.scatter(states_dim1, states_dim2, 
+                          alpha=0.4, s=80, edgecolors='none')
             
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
-            ax.set_title(f'{optimizer_name} Reward Landscape')
+            ax.set_title(f'{convert_optimizer_name(optimizer_name)}')
             ax.grid(True, linestyle='--', alpha=0.7)
             
-            # Add colorbar
-            cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.01)
-            cbar.set_label('Reward')
+            # # Add colorbar
+            # cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.01)
+            # cbar.set_label('Reward')
             
-    plt.tight_layout()
+            # Set limits for axes and also some limit space
+            ax.set_xlim(min_x - 0.1 * (max_x - min_x), max_x + 0.1 * (max_x - min_x))
+            ax.set_ylim(min_y - 0.1 * (max_y - min_y), max_y + 0.1 * (max_y - min_y))
+    plt.tight_layout(pad=3.0)
     
+    extension = 'pdf' if save_pdf else 'png'
     if output_dir:
-        plt.savefig(os.path.join(output_dir, 'reward_landscape_by_optimizer.png'), dpi=300, bbox_inches='tight')
-        print(f"Optimizer reward landscape visualization saved to {os.path.join(output_dir, 'reward_landscape_by_optimizer.png')}")
+        plt.savefig(os.path.join(output_dir, f'reward_landscape_by_optimizer.{extension}'), dpi=300, bbox_inches='tight')
+        print(f"Optimizer reward landscape visualization saved to {os.path.join(output_dir, f'reward_landscape_by_optimizer.{extension}')}")
         
     plt.close(fig)
 
-def visualize_optimizer_reward_landscape_3d(all_trajectories_by_optimizer, output_dir=None):
+def visualize_optimizer_reward_landscape_3d(all_trajectories_by_optimizer, output_dir=None, save_pdf=False):
     """
     Visualize 3D reward landscape for all optimizers with time on z-axis.
     """
@@ -720,7 +904,27 @@ def visualize_optimizer_reward_landscape_3d(all_trajectories_by_optimizer, outpu
     
     # Create figure with 3D subplots for each optimizer
     n_optimizers = len(all_trajectories_by_optimizer)
-    fig = plt.figure(figsize=(6 * n_optimizers, 5))
+    fig = plt.figure(figsize=(6 * n_optimizers, 6))
+    
+    # Compute limit for axes based on all trajectories
+    min_x = float('inf')
+    max_x = float('-inf')
+    min_y = float('inf')
+    max_y = float('-inf')
+    min_z = float('inf')
+    max_z = float('-inf')
+    for optimizer_trajectories in all_trajectories_by_optimizer.values():
+        for model_trajectories in optimizer_trajectories:
+            for traj in model_trajectories:
+                for state in traj['inputs']:
+                    min_x = min(min_x, state[dim1])
+                    max_x = max(max_x, state[dim1])
+                    min_y = min(min_y, state[dim2])
+                    max_y = max(max_y, state[dim2])
+                # Time steps are simply the indices of the trajectory
+                time_steps = list(range(len(traj['inputs'])))
+                min_z = min(min_z, min(time_steps))
+                max_z = max(max_z, max(time_steps))
     
     for opt_idx, (optimizer_name, optimizer_trajectories) in enumerate(all_trajectories_by_optimizer.items()):
         ax = fig.add_subplot(1, n_optimizers, opt_idx + 1, projection='3d')
@@ -743,27 +947,46 @@ def visualize_optimizer_reward_landscape_3d(all_trajectories_by_optimizer, outpu
         if states_dim1:
             # Create 3D scatter plot with rewards as color
             sc = ax.scatter3D(states_dim1, states_dim2, time_steps, 
-                            c=rewards, cmap='viridis', alpha=0.6, s=30)
+                            alpha=0.4, s=70)
             
             # Set labels
-            ax.set_xlabel(x_label)
-            ax.set_ylabel(y_label)
-            ax.set_zlabel('Time Step')
-            ax.set_title(f'{optimizer_name} 3D Reward Landscape')
+            ax.set_xlabel(x_label, labelpad=15)
+            ax.set_ylabel(y_label, labelpad=15)
+            ax.set_zlabel('Time Step', labelpad=15)
+            ax.set_title(f'{convert_optimizer_name(optimizer_name)}')
             
-            # Add colorbar
-            cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.1, shrink=0.8)
-            cbar.set_label('Reward')
+            # # Add colorbar
+            # cbar = fig.colorbar(sc, ax=ax, orientation='vertical', pad=0.1, shrink=0.8)
+            # cbar.set_label('Reward')
+            
+            # Improve tick labels
+            ax.tick_params(axis='x', pad=5)
+            ax.tick_params(axis='y', pad=5)
+            ax.tick_params(axis='z', pad=5)
             
             # Set consistent view angle for better comparison
             ax.view_init(elev=20, azim=45)
             
-    plt.tight_layout()
+            # Set limits for axes
+            ax.set_xlim(min_x, max_x)
+            ax.set_ylim(min_y, max_y)
+            ax.set_zlim(min_z, max_z)
+            
+    plt.tight_layout(pad=3.0)
     
+    # Enable and style 3D grid lines manually
+    for ax in fig.get_axes():        
+        for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
+            axis._axinfo["grid"]['color'] =  (0.5, 0.5, 0.5, 0.3)  # RGBA gray with transparency
+            axis._axinfo["grid"]['linestyle'] = '--'
+            axis._axinfo["grid"]['linewidth'] = 0.2
+            axis._axinfo["grid"]['visible'] = True
+            
+    extension = 'pdf' if save_pdf else 'png'
     if output_dir:
-        plt.savefig(os.path.join(output_dir, 'reward_landscape_3d_by_optimizer.png'), 
+        plt.savefig(os.path.join(output_dir, f'reward_landscape_3d_by_optimizer.{extension}'), 
                    dpi=300, bbox_inches='tight')
-        print(f"3D optimizer reward landscape visualization saved to {os.path.join(output_dir, 'reward_landscape_3d_by_optimizer.png')}")
+        print(f"3D optimizer reward landscape visualization saved to {os.path.join(output_dir, f'reward_landscape_3d_by_optimizer.{extension}')}")
         
     plt.close(fig)
 
@@ -777,6 +1000,7 @@ def main():
     parser.add_argument('--num_rollouts', type=int, default=3, help='Number of test rollouts per model')
     parser.add_argument('--n_components', type=int, default=3, help='Number of PCA components to use')
     parser.add_argument('--steps', type=int, default=1000, help='Maximum number of steps per rollout')
+    parser.add_argument('--pdf', action='store_true', help='Generate PDF output instead of PNG')
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
     args = parser.parse_args()
     
@@ -862,38 +1086,43 @@ def main():
     print("\nGenerating optimizer comparison visualizations...")
     
     # Visualize PCA trajectories by optimizer (comparison plots)
-    visualize_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimizer, args.output_dir)
+    visualize_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimizer, args.output_dir, args.pdf)
+    visualize_combined_optimizer_pca_trajectories_3d(all_projected_trajectories_by_optimizer, args.output_dir, args.pdf)
     
     # Visualize reward landscapes by optimizer (comparison plots)
-    visualize_optimizer_reward_landscape_combined(all_trajectories_by_optimizer, args.output_dir)
-    visualize_optimizer_reward_landscape_3d(all_trajectories_by_optimizer, args.output_dir)
+    visualize_optimizer_reward_landscape_combined(all_trajectories_by_optimizer, args.output_dir, args.pdf)
+    visualize_optimizer_reward_landscape_3d(all_trajectories_by_optimizer, args.output_dir, args.pdf)
     
-    # Generate individual plots for each optimizer
-    print("\nGenerating individual optimizer visualizations...")
-    for optimizer_name, optimizer_trajectories in all_trajectories_by_optimizer.items():
-        print(f"  Generating plots for {optimizer_name}...")
+    # # Generate individual plots for each optimizer
+    # print("\nGenerating individual optimizer visualizations...")
+    # for optimizer_name, optimizer_trajectories in all_trajectories_by_optimizer.items():
+    #     print(f"  Generating plots for {optimizer_name}...")
         
-        # Individual PCA trajectories plot for this optimizer
-        if optimizer_name in all_projected_trajectories_by_optimizer:
-            visualize_single_optimizer_pca_trajectories_3d(
-                all_projected_trajectories_by_optimizer[optimizer_name], 
-                optimizer_name, 
-                args.output_dir
-            )
+        # # Individual PCA trajectories plot for this optimizer
+        # if optimizer_name in all_projected_trajectories_by_optimizer:
+        #     visualize_single_optimizer_pca_trajectories_3d(
+        #         all_projected_trajectories_by_optimizer[optimizer_name], 
+        #         optimizer_name, 
+        #         args.output_dir,
+        #         args.pdf
+        #     )
         
-        # Individual reward landscape plots for this optimizer
-        visualize_single_optimizer_reward_landscape_combined(
-            optimizer_trajectories, 
-            optimizer_name, 
-            args.output_dir
-        )
-        visualize_single_optimizer_reward_landscape_3d(
-            optimizer_trajectories, 
-            optimizer_name, 
-            args.output_dir
-        )
+        # # Individual reward landscape plots for this optimizer
+        # visualize_single_optimizer_reward_landscape_combined(
+        #     optimizer_trajectories, 
+        #     optimizer_name, 
+        #     args.output_dir,
+        #     args.pdf
+        # )
+        # visualize_single_optimizer_reward_landscape_3d(
+        #     optimizer_trajectories, 
+        #     optimizer_name, 
+        #     args.output_dir,
+        #     args.pdf
+        # )
     
     # Generate summary statistics
+    # Save to file
     print("\nSummary Statistics by Optimizer:")
     for optimizer_name, optimizer_trajectories in all_trajectories_by_optimizer.items():
         total_trajectories = sum(len(model_trajs) for model_trajs in optimizer_trajectories)
@@ -904,12 +1133,20 @@ def main():
                 avg_rewards.append(sum(traj['rewards']))
         
         if avg_rewards:
-            print(f"  {optimizer_name}:")
-            print(f"    Models: {len(optimizer_trajectories)}")
-            print(f"    Total trajectories: {total_trajectories}")
-            print(f"    Mean episode reward: {np.mean(avg_rewards):.2f} ± {np.std(avg_rewards):.2f}")
-            print(f"    Max episode reward: {np.max(avg_rewards):.2f}")
-            print(f"    Min episode reward: {np.min(avg_rewards):.2f}")
+            file_name = f"{optimizer_name.lower()}_summary.txt"
+            with open(os.path.join(args.output_dir, file_name), 'w') as f:
+                f.write(f"Optimizer: {optimizer_name}\n")
+                f.write(f"Total Models: {len(optimizer_trajectories)}\n")
+                f.write(f"Total Trajectories: {total_trajectories}\n")
+                f.write(f"Mean Episode Reward: {np.mean(avg_rewards):.2f} ± {np.std(avg_rewards):.2f}\n")
+                f.write(f"Max Episode Reward: {np.max(avg_rewards):.2f}\n")
+                f.write(f"Min Episode Reward: {np.min(avg_rewards):.2f}\n")
+            # print(f"  {optimizer_name}:")
+            # print(f"    Models: {len(optimizer_trajectories)}")
+            # print(f"    Total trajectories: {total_trajectories}")
+            # print(f"    Mean episode reward: {np.mean(avg_rewards):.2f} ± {np.std(avg_rewards):.2f}")
+            # print(f"    Max episode reward: {np.max(avg_rewards):.2f}")
+            # print(f"    Min episode reward: {np.min(avg_rewards):.2f}")
     
     print("\nAnalysis complete!")
 

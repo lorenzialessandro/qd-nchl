@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import seaborn as sns
@@ -12,10 +13,35 @@ from sklearn.decomposition import PCA
 from network import NCHL, Neuron
 from pyribs import QDBase
 
+import scienceplots
+plt.style.use('science')
+
+# Global font settings
+mpl.rcParams['axes.titlesize'] = 25         # Title font size
+mpl.rcParams['figure.titlesize'] = 25      # Figure title font size
+mpl.rcParams['axes.labelsize'] = 15         # x, y, z label font size
+mpl.rcParams['xtick.labelsize'] = 15
+mpl.rcParams['ytick.labelsize'] = 15
+mpl.rcParams['legend.fontsize'] = 20       # Legend font size
+
 # - 
 # Global variables
 descriptor_names = ["Activation Diversity", "Weight Change Diversity"]
 optimizers_names = ["MAPElites", "CMAME", "CMAMAE"]
+SAVE_IN_PDF = True  # Set to True to save plots in PDF format
+
+def convert_optimizer_name(name):
+    """
+    Convert optimizer name to a more readable format.
+    """
+    if name == "MAPElites":
+        return "MAP-Elites"
+    elif name == "CMAME":
+        return "CMA-ME"
+    elif name == "CMAMAE":
+        return "CMA-MAE"
+    else:
+        return name
 
 # Utility function
 def get_optimizer_paths(list_of_paths):
@@ -94,6 +120,70 @@ def compute_avg_archive(list_of_paths):
     
     return average_objectives, bounds
 
+def visualize_all_archives_per_optimizer(list_of_paths, output_dir, cmap="viridis"):
+    # for each optimizer, visualize all archives in a single plot.
+    # at end there will be one plot saved for each optimizer.
+    optimizer_paths = get_optimizer_paths(list_of_paths)
+    for optimizer_name in optimizers_names:
+        if optimizer_name not in optimizer_paths:
+            print(f"No archives found for optimizer {optimizer_name}. Skipping.")
+            continue
+        
+        # Load all archives for this optimizer
+        archives = [pickle.load(open(path, 'rb')) for path in optimizer_paths[optimizer_name]]
+        
+        # Create a figure with subplots for each archive
+        n_archives = len(archives)
+        fig, axes = plt.subplots(2, 5, figsize=(20, 8))
+        axes = axes.flatten() if n_archives > 1 else [axes]
+        
+        if n_archives == 1:
+            axes = [axes]
+        # Compute global min and max for color normalization
+        global_min = float('inf')
+        global_max = float('-inf')
+        for archive in archives:
+            objectives = archive.data()['objective']
+            valid_values = objectives[~np.isnan(objectives)]
+            if len(valid_values) > 0:
+                global_min = min(global_min, np.min(valid_values))
+                global_max = max(global_max, np.max(valid_values))
+        # Create heatmaps for each archive
+        for ax, archive in zip(axes, archives):
+            data = archive.data()
+            objectives = data['objective']
+            indexes = data['index']
+            
+            # Create a 2D array to store the fitness values
+            fitness_map = np.full(archive.dims, np.nan)
+            
+            # Fill the fitness map with values
+            for i, idx in enumerate(indexes):
+                coords = np.unravel_index(idx, archive.dims)
+                fitness_map[coords] = objectives[i]
+            
+            # Create heatmap with normalized color scale
+            cax = ax.imshow(fitness_map, cmap=cmap, aspect='auto', 
+                            extent=[archive.lower_bounds[1], archive.upper_bounds[1], 
+                                    archive.lower_bounds[0], archive.upper_bounds[0]],
+                            vmin=global_min, vmax=global_max,
+                            origin='lower')
+            
+            # ax.set_title(f'{convert_optimizer_name(optimizer_name)} Archive')
+            ax.set_xlabel(descriptor_names[1], fontsize=15)
+            ax.set_ylabel(descriptor_names[0], fontsize=15)
+            
+            # Add colorbar
+            fig.colorbar(cax, ax=ax, orientation='vertical')
+            
+        # Add title for the entire figure
+        fig.suptitle(f'{convert_optimizer_name(optimizer_name)} Archives')
+        # Save the figure
+        extension = 'pdf' if SAVE_IN_PDF else 'png'
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f"{convert_optimizer_name(optimizer_name)}_archives.{extension}"), dpi=300, bbox_inches='tight')
+    
+
 def visualize_avg_archives(list_of_paths, output_dir, cmap="viridis"):
     # For each optimizer, compute the average archive across all runs 
     # Create a unique plot with each optimizer's average archive subplot side by side.
@@ -129,17 +219,19 @@ def visualize_avg_archives(list_of_paths, output_dir, cmap="viridis"):
         # Create heatmap with normalized color scale
         cax = ax.imshow(avg_archive, cmap=cmap, aspect='auto', 
                         extent=[bounds[1][0], bounds[1][1], bounds[0][0], bounds[0][1]],
-                        vmin=global_min, vmax=global_max)  
+                        vmin=global_min, vmax=global_max,
+                        origin='lower') 
         
-        ax.set_title(f'{optimizer_name} Average Archive')
+        ax.set_title(f'{convert_optimizer_name(optimizer_name)}')
         ax.set_xlabel(descriptor_names[1])
         ax.set_ylabel(descriptor_names[0])
         
         # Add colorbar
         fig.colorbar(cax, ax=ax, orientation='vertical')
     
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "avg_archives.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(output_dir, f"avg_archives.{extension}"), dpi=300, bbox_inches='tight')
     plt.close()
 
 # -
@@ -187,6 +279,9 @@ def plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best
     all_best_fitnesses = []
     all_avg_fitnesses = []
     all_cum_best_fitnesses = []
+    
+    len_x = 0
+    
     for optimizer_name in optimizers_names:
         # Compute fitness history for this optimizer
         best_fitnesses, avg_fitnesses, cum_best_fitnesses = compute_fitness_history(optimizer_paths[optimizer_name])
@@ -199,36 +294,44 @@ def plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best
             # Plot cumulative global best
             avg_cum_best = np.mean(cum_best_fitnesses, axis=0)
             std_cum_best = np.std(cum_best_fitnesses, axis=0)
-            plt.plot(avg_cum_best, label=f"{optimizer_name} Avg Global Best")
+            plt.plot(avg_cum_best, label=f"{convert_optimizer_name(optimizer_name)}", linewidth=2)
             plt.fill_between(range(len(avg_cum_best)), avg_cum_best - std_cum_best,
                             avg_cum_best + std_cum_best, alpha=0.2)
+            
+            len_x = max(len_x, len(avg_cum_best))
 
         if complete or only_best: 
             # Plot the best fitness
             avg_best_fitnesses = np.mean(best_fitnesses, axis=0)
             std_best_fitnesses = np.std(best_fitnesses, axis=0)
-            plt.plot(avg_best_fitnesses, label=f"{optimizer_name} Avg Best Fitness")
+            plt.plot(avg_best_fitnesses, label=f"{convert_optimizer_name(optimizer_name)}", linewidth=2)
             plt.fill_between(range(len(avg_best_fitnesses)), avg_best_fitnesses - std_best_fitnesses,
                             avg_best_fitnesses + std_best_fitnesses, alpha=0.2)
+            
+            len_x = max(len_x, len(avg_best_fitnesses))
 
         if complete and not only_best:
             # Plot the average fitness
             avg_avg_fitnesses = np.mean(avg_fitnesses, axis=0)
             std_avg_fitnesses = np.std(avg_fitnesses, axis=0)
-            plt.plot(avg_avg_fitnesses, label=f"{optimizer_name} Avg Avg Fitness")
+            plt.plot(avg_avg_fitnesses, label=f"{convert_optimizer_name(optimizer_name)}", linewidth=2)
             plt.fill_between(range(len(avg_avg_fitnesses)), avg_avg_fitnesses - std_avg_fitnesses,
                              avg_avg_fitnesses + std_avg_fitnesses, alpha=0.2)
+            
+            len_x = max(len_x, len(avg_avg_fitnesses))
         
     if threshold is not None:
-        plt.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
-    plt.title('Fitness History Comparison')
+        plt.hlines(y=threshold, xmin=0, xmax=len_x-1,
+                     color='r', linestyle='--', label="Threshold", linewidth=2)
+    # plt.title('Fitness History Comparison')
     plt.xlabel("Generation")
     plt.ylabel("Fitness")
     plt.legend(loc='lower right')
     plt.tight_layout()
     appendix = "_complete" if complete else ""
     appendix += "_only_best" if only_best else ""
-    plt.savefig(os.path.join(path_dir, f"fitness_history_compare{appendix}.png"), dpi=300, bbox_inches='tight')
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
+    plt.savefig(os.path.join(path_dir, f"fitness_history_compare{appendix}.{extension}"), dpi=300, bbox_inches='tight')
     plt.close()
 
 def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
@@ -245,6 +348,8 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
     all_best_fitnesses = []
     all_avg_fitnesses = []
     all_cum_best_fitnesses = []
+    
+    len_x = 0
     
     # collect all data
     for optimizer_name in optimizers_names:
@@ -275,6 +380,8 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
             all_values.extend(best_values - best_std)
             all_values.extend(best_values + best_std)
             all_values.extend(best_values)
+            
+        len_x = max(len_x, len(cum_best_values))
     
     # Compute true global min and max
     global_min = np.min(all_values)
@@ -290,7 +397,7 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
         # Plot cumulative global best
         avg_cum_best = np.mean(cum_best_fitnesses, axis=0)
         std_cum_best = np.std(cum_best_fitnesses, axis=0)
-        ax.plot(avg_cum_best, label="Avg Global Best")
+        ax.plot(avg_cum_best, label="Avg Global Best", linewidth=2)
         ax.fill_between(range(len(avg_cum_best)), avg_cum_best - std_cum_best,
                         avg_cum_best + std_cum_best, alpha=0.2)
 
@@ -298,14 +405,15 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
             # Plot the best fitness
             avg_best_fitnesses = np.mean(best_fitnesses, axis=0)
             std_best_fitnesses = np.std(best_fitnesses, axis=0)
-            ax.plot(avg_best_fitnesses, label="Avg Best Fitness")
+            ax.plot(avg_best_fitnesses, label="Avg Best Fitness", linewidth=2)
             ax.fill_between(range(len(avg_best_fitnesses)), avg_best_fitnesses - std_best_fitnesses,
                             avg_best_fitnesses + std_best_fitnesses, alpha=0.2)
         
         if threshold is not None:
-            ax.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
+            ax.hlines(y=threshold, xmin=0, xmax=len_x-1,
+                     color='r', linestyle='--', label="Threshold", linewidth=2)
 
-        ax.set_title(f'{optimizer_name} Fitness History')
+        ax.set_title(f'{convert_optimizer_name(optimizer_name)}')
         ax.set_xlabel("Generation")
         ax.set_ylabel("Fitness")
         ax.legend(loc='lower right')
@@ -314,7 +422,8 @@ def plot_fitness_history(logs_paths, path_dir, complete=False, threshold=None):
         ax.set_ylim(global_min, global_max)
         
     plt.tight_layout()
-    plt.savefig(os.path.join(path_dir, "fitness_history.png"), dpi=300, bbox_inches='tight')
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
+    plt.savefig(os.path.join(path_dir, f"fitness_history.{extension}"), dpi=300, bbox_inches='tight')
     plt.close()
 # - 
 # Hebbian parameters
@@ -363,10 +472,24 @@ def plot_hebbian_distribution_per_params(list_of_paths, path_dir, nodes, only_hi
         paths = optimizer_paths[optimizer_name] 
         df_long = compute_hebbian_distribution_per_params(paths, nodes, only_hidden=only_hidden) 
         df_long['Optimizer'] = optimizer_name  # Add optimizer column for identification
-        all_dfs.append(df_long) 
+        all_dfs.append(df_long)
          
     combined_df = pd.concat(all_dfs, ignore_index=True) 
-     
+    
+    # Create file with statistics for each parameter and optimizer
+    stats_file = os.path.join(path_dir, "hebbian_stats.txt")
+    with open(stats_file, 'w') as f:
+        f.write("Hebbian Parameters Statistics\n")
+        f.write("================================\n")
+        for param in param_names:
+            f.write(f"\nParameter: {param}\n")
+            for optimizer_name in optimizer_paths.keys():
+                df_param = combined_df[combined_df['Optimizer'] == optimizer_name]
+                if not df_param.empty:
+                    mean_value = df_param[param].mean()
+                    std_value = df_param[param].std()
+                    f.write(f"{convert_optimizer_name(optimizer_name)}: Mean={mean_value:.4f}, Std={std_value:.4f}\n")
+    
     # Step 2: Create subplots : one subplot per parameter, per optimizer 
     n_params = len(param_names) 
     optimizers_list = list(optimizer_paths.keys())  # Get actual optimizer names
@@ -395,12 +518,11 @@ def plot_hebbian_distribution_per_params(list_of_paths, path_dir, nodes, only_hi
                 sns.boxplot(x='Network', y=param_name, data=df_optimizer, ax=ax, color=color, width=0.9) 
  
             if param_idx == 0:  # First row - show optimizer names
-                ax.set_title(f'{optimizer_name}')
+                ax.set_title(f'{convert_optimizer_name(optimizer_name)}')
             else:
                 ax.set_title('')  # No title for other rows
         
-            ax.set_ylabel(param_name, color=color, fontsize=15)
-            
+            ax.set_ylabel(param_name, color=color)            
             ax.set_xlabel('Network') 
             ax.set_ylabel(param_name) 
             ax.grid(True, linestyle='--', alpha=0.7) 
@@ -409,12 +531,13 @@ def plot_hebbian_distribution_per_params(list_of_paths, path_dir, nodes, only_hi
             if ax.get_legend():
                 ax.get_legend().remove() 
     
-    # Add master title and layout
-    fig.suptitle('Hebbian Learning Rule Parameter Distribution Across Networks', fontsize=18) 
-    fig.subplots_adjust(top=0.95) 
+    # # Add master title and layout
+    # fig.suptitle('Hebbian Learning Rule Parameter Distribution Across Networks', fontsize=18) 
+    # fig.subplots_adjust(top=0.95) 
     
     # Save the plot
-    plt.savefig(os.path.join(path_dir, f"hebbian_distribution_per_params{'_hidden' if only_hidden else ''}.png"), 
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
+    plt.savefig(os.path.join(path_dir, f"hebbian_distribution_per_params{'_hidden' if only_hidden else ''}.{extension}"), 
                 dpi=300, bbox_inches='tight') 
     plt.close()    
     
@@ -491,7 +614,7 @@ def plot_hebbian_distribution_per_nets(list_of_paths, path_dir, nodes, only_hidd
         if legend_handles is None:
             legend_handles, legend_labels = ax.get_legend_handles_labels()
 
-        ax.set_title(f'{optimizer_name}')
+        ax.set_title(f'{convert_optimizer_name(optimizer_name)}')
         ax.set_xlabel('Network')
         ax.set_ylabel('Value')
         ax.set_ylim(global_min, global_max)  # Apply shared y-axis
@@ -501,7 +624,8 @@ def plot_hebbian_distribution_per_nets(list_of_paths, path_dir, nodes, only_hidd
     fig.legend(legend_handles, legend_labels, loc='lower center', ncol=len(legend_labels), fontsize='medium')
     fig.suptitle('Hebbian Learning Rule Parameter Distribution Across Networks', fontsize=18)
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-    plt.savefig(os.path.join(path_dir, f"hebbian_distribution_per_nets{'_hidden' if only_hidden else ''}.png"),
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
+    plt.savefig(os.path.join(path_dir, f"hebbian_distribution_per_nets{'_hidden' if only_hidden else ''}.{extension}"),
                 dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -602,9 +726,9 @@ def plot_combined_pca_rules(list_of_paths, path_dir, nodes, only_hidden=False):
                 pca_result[mask, 1],
                 color=optimizer_colors[optimizer_name],
                 # marker='o' if layer_type == "Input" else ('^' if layer_type == "Hidden" else 's'),
-                label=f'{optimizer_name} - {layer_type}',
+                label=f'{convert_optimizer_name(optimizer_name)} - {layer_type}',
                 alpha=0.7,
-                s=250,
+                s=300,
                 linewidths=0.7
             )
     # Create optimizer and layer type legend
@@ -612,8 +736,8 @@ def plot_combined_pca_rules(list_of_paths, path_dir, nodes, only_hidden=False):
     for optimizer_name, color in optimizer_colors.items():
         optimizer_handles.append(
             Line2D([0], [0], marker='o', color='w', 
-                   label=f'{optimizer_name}',
-                   markerfacecolor=color, markersize=10, alpha=0.7, linewidth=0.7)
+                   label=f'{convert_optimizer_name(optimizer_name)}',
+                   markerfacecolor=color, markersize=18, alpha=0.7, linewidth=0.7)
         )
     # layer_type_handles = []
     # for layer_type, color in layer_colors.items():
@@ -623,15 +747,18 @@ def plot_combined_pca_rules(list_of_paths, path_dir, nodes, only_hidden=False):
     #                markerfacecolor=color, markersize=10)
     #     )
     
-    # Add the legends for optimizers
-    plt.legend(handles=optimizer_handles, loc='best', title="Optimizers")
+    # Add the legends for optimizers in horizontal layout and located at the lower center
+    plt.legend(handles=optimizer_handles, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=len(optimizer_handles))
+
+    
     # Plot formatting
-    plt.xlabel(f"PCA 1 - {pca.explained_variance_ratio_[0]:.2f}")
-    plt.ylabel(f"PCA 2 - {pca.explained_variance_ratio_[1]:.2f}")
-    plt.title("PCA of Hebbian Rules by Optimizer")
+    plt.xlabel(f"PCA 1") # - {pca.explained_variance_ratio_[0]:.2f}")
+    plt.ylabel(f"PCA 2") # - {pca.explained_variance_ratio_[1]:.2f}")
+    # plt.title("PCA of Hebbian Rules by Optimizer")
     plt.tight_layout()
     suffix = "_hidden" if only_hidden else ""
-    plt.savefig(os.path.join(path_dir, f"pca_combined_rules{suffix}.png"), dpi=300, bbox_inches='tight')
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
+    plt.savefig(os.path.join(path_dir, f"pca_combined_rules{suffix}.{extension}"), dpi=300, bbox_inches='tight')
     plt.close()
    
 # - 
@@ -677,18 +804,27 @@ def plot_descriptors(list_of_paths, path_dir, k=5):
         # Plot the descriptors
         ax.scatter(all_descriptors[:, 0], all_descriptors[:, 1], 
                    color=colors[optimizers_names.index(optimizer_name)], 
-                   label=optimizer_name, alpha=0.7, s=50)
+                   label=optimizer_name, alpha=0.7, s=150)
         
-        ax.set_title(f'{optimizer_name}')
+        ax.set_title(f'{convert_optimizer_name(optimizer_name)}')
         ax.set_xlabel(descriptor_names[1])
         ax.set_ylabel(descriptor_names[0])
         # ax.legend()
-        ax.set_xlim(0, 1)  # Set x-axis limits
-        ax.set_ylim(0, 1)  # Set y-axis limits
+        threshold = 0.1  # Example threshold for x and y limits
+        ax.set_xlim(0 - threshold, 1 + threshold)
+        ax.set_ylim(0 - threshold, 1 + threshold)
         
-    plt.suptitle(f"Best {k} Descriptors by Optimizer", fontsize=16)
+        ax.tick_params(axis='x', pad=5)
+        ax.tick_params(axis='y', pad=5)
+        
+        # set tick digits
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.2f}'))
+        
+    # plt.suptitle(f"Best {k} Descriptors by Optimizer", fontsize=16)
     plt.tight_layout()
-    plt.savefig(os.path.join(path_dir, "descriptors.png"), dpi=300, bbox_inches='tight')
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
+    plt.savefig(os.path.join(path_dir, f"descriptors.{extension}"), dpi=300, bbox_inches='tight')
     plt.close()
 
 # -
@@ -734,6 +870,193 @@ def compute_archives_stats_complete(optimizer_paths):
     
     return stats_df
 
+import numpy as np
+import pandas as pd
+from scipy.stats import wilcoxon
+from itertools import combinations
+import pickle
+
+def compute_archives_stats_complete_new(list_of_paths):
+    stats = {}
+    raw_data = {}  # Store raw values for statistical tests
+    
+    optimizer_paths = get_optimizer_paths(list_of_paths)
+    
+    for optimizer_name in optimizers_names:
+        stats[optimizer_name] = {
+            'qd_score': [],
+            'coverage': [],
+            'rmse': [],
+            'qd_score_std': [],
+            'coverage_std': [],
+            'rmse_std': []
+        }
+        
+        # Store raw values for each metric
+        raw_data[optimizer_name] = {
+            'qd_score': [],
+            'coverage': [],
+            'rmse': []
+        }
+        
+        for path in optimizer_paths[optimizer_name]:
+            archive = pickle.load(open(path, 'rb'))
+            qd_score = compute_qd_score(archive)
+            coverage = archive.stats.coverage
+            rmse = compute_archive_precision(archive)
+            
+            # Store for statistics
+            stats[optimizer_name]['qd_score'].append(qd_score)
+            stats[optimizer_name]['coverage'].append(coverage)
+            stats[optimizer_name]['rmse'].append(rmse)
+            
+            # Store raw data for tests
+            raw_data[optimizer_name]['qd_score'].append(qd_score)
+            raw_data[optimizer_name]['coverage'].append(coverage)
+            raw_data[optimizer_name]['rmse'].append(rmse)
+        
+        # Compute mean and std for each metric
+        qd_scores = stats[optimizer_name]['qd_score']
+        coverage_vals = stats[optimizer_name]['coverage']
+        rmse_vals = stats[optimizer_name]['rmse']
+
+        stats[optimizer_name]['qd_score'] = np.mean(qd_scores)
+        stats[optimizer_name]['qd_score_std'] = np.std(qd_scores)
+
+        stats[optimizer_name]['coverage'] = np.mean(coverage_vals)
+        stats[optimizer_name]['coverage_std'] = np.std(coverage_vals)
+
+        stats[optimizer_name]['rmse'] = np.mean(rmse_vals)
+        stats[optimizer_name]['rmse_std'] = np.std(rmse_vals)
+        
+    # Convert to DataFrame
+    stats_df = pd.DataFrame(stats).T
+    stats_df.columns = ['QD Score', 'Coverage', 'RMSE', 
+                        'QD Score Std', 'Coverage Std', 'RMSE Std']
+    stats_df.reset_index(inplace=True)
+    stats_df.rename(columns={'index': 'Optimizer'}, inplace=True)
+    
+    return stats_df, raw_data
+
+def perform_wilcoxon_tests(raw_data, alpha=0.05):
+    """
+    Perform pairwise Wilcoxon signed-rank tests between optimizers for each metric.
+    
+    Parameters:
+    raw_data: dict with optimizer names as keys and metric arrays as values
+    alpha: significance level (default 0.05)
+    
+    Returns:
+    Dictionary with test results for each metric
+    """
+    optimizers = list(raw_data.keys())
+    metrics = ['qd_score', 'coverage', 'rmse']
+    
+    results = {}
+    
+    for metric in metrics:
+        results[metric] = {}
+        results[metric]['comparisons'] = []
+        results[metric]['p_values'] = []
+        results[metric]['statistics'] = []
+        results[metric]['significant'] = []
+        results[metric]['better_optimizer'] = []
+        
+        # Get all pairwise combinations of optimizers
+        for opt1, opt2 in combinations(optimizers, 2):
+            data1 = np.array(raw_data[opt1][metric])
+            data2 = np.array(raw_data[opt2][metric])
+            
+            # Check if we have enough data points
+            if len(data1) < 2 or len(data2) < 2:
+                print(f"Warning: Not enough data points for {opt1} vs {opt2} on {metric}")
+                continue
+            
+            # Ensure same number of samples (paired test)
+            min_samples = min(len(data1), len(data2))
+            data1 = data1[:min_samples]
+            data2 = data2[:min_samples]
+            
+            # Perform Wilcoxon signed-rank test
+            try:
+                statistic, p_value = wilcoxon(data1, data2, alternative='two-sided')
+                
+                # Determine which optimizer is better based on means
+                mean1 = np.mean(data1)
+                mean2 = np.mean(data2)
+                
+                # For QD Score and Coverage: higher is better
+                # For RMSE: lower is better
+                if metric in ['qd_score', 'coverage']:
+                    better_opt = opt1 if mean1 > mean2 else opt2
+                else:  # rmse
+                    better_opt = opt1 if mean1 < mean2 else opt2
+                
+                # Store results
+                results[metric]['comparisons'].append(f"{opt1} vs {opt2}")
+                results[metric]['p_values'].append(p_value)
+                results[metric]['statistics'].append(statistic)
+                results[metric]['significant'].append(p_value < alpha)
+                results[metric]['better_optimizer'].append(better_opt)
+                
+            except ValueError as e:
+                print(f"Error in Wilcoxon test for {opt1} vs {opt2} on {metric}: {e}")
+                continue
+    
+    return results
+
+def print_wilcoxon_results(results, alpha=0.05):
+    """
+    Print formatted results of Wilcoxon tests
+    """
+    for metric in results.keys():
+        print(f"\n{'='*50}")
+        print(f"WILCOXON TEST RESULTS FOR {metric.upper()}")
+        print(f"{'='*50}")
+        
+        if not results[metric]['comparisons']:
+            print("No valid comparisons found.")
+            continue
+            
+        for i, comparison in enumerate(results[metric]['comparisons']):
+            p_val = results[metric]['p_values'][i]
+            statistic = results[metric]['statistics'][i]
+            significant = results[metric]['significant'][i]
+            better_opt = results[metric]['better_optimizer'][i]
+            
+            print(f"\nComparison: {comparison}")
+            print(f"Statistic: {statistic:.4f}")
+            print(f"P-value: {p_val:.6f}")
+            print(f"Significant (α={alpha}): {'Yes' if significant else 'No'}")
+            
+            if significant:
+                print(f"Better optimizer: {better_opt}")
+                print("Conclusion: There IS a significant difference")
+            else:
+                print("Conclusion: No significant difference detected")
+    
+    print(f"\n{'='*50}")
+
+def create_wilcoxon_summary_table(results):
+    """
+    Create a summary DataFrame of all Wilcoxon test results
+    """
+    summary_data = []
+    
+    for metric in results.keys():
+        for i, comparison in enumerate(results[metric]['comparisons']):
+            summary_data.append({
+                'Metric': metric,
+                'Comparison': comparison,
+                'Statistic': results[metric]['statistics'][i],
+                'P-value': results[metric]['p_values'][i],
+                'Significant': results[metric]['significant'][i],
+                'Better_Optimizer': results[metric]['better_optimizer'][i]
+            })
+    
+    return pd.DataFrame(summary_data)
+
+
 def plot_archives_stats_columns(list_of_paths, path_dir):
     # for each optimizer, compute the average archive stats 
     # plot  qd score, coverage, rmse 
@@ -768,7 +1091,8 @@ def plot_archives_stats_columns(list_of_paths, path_dir):
         ax.set_ylabel(metric)    
 
     plt.tight_layout()
-    plt.savefig(os.path.join(path_dir, "archive_stats.png"), dpi=300, bbox_inches='tight')
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
+    plt.savefig(os.path.join(path_dir, f"archive_stats.{extension}"), dpi=300, bbox_inches='tight')
     
 def compute_archives_stats(optimizer_paths):
     stats = {}
@@ -819,7 +1143,7 @@ def plot_archives_stats_seaborn(list_of_paths, path_dir):
                        value_name='Value')
     
     # Create subplots
-    fig, axes = plt.subplots(1, 3, figsize=(15, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
     metrics = ['QD Score', 'Coverage', 'RMSE']
     colors = sns.color_palette("viridis", len(optimizers_names))
@@ -828,24 +1152,34 @@ def plot_archives_stats_seaborn(list_of_paths, path_dir):
     for ax, metric in zip(axes, metrics):        
         metric_data = df_melted[df_melted['Metric'] == metric]
         
+        metric_data['Optimizers'] = metric_data['Optimizer'].apply(convert_optimizer_name)
+        
         bar_colors = [color_map[opt] for opt in metric_data['Optimizer']]
         
-        sns.boxplot(data=metric_data, x='Optimizer', y='Value', ax=ax, palette=color_map, hue='Optimizer', legend=False)
-        ax.set_title(metric, fontsize=12)
-        ax.set_xlabel('Optimizer')
-        ax.set_ylabel(metric)
+        sns.boxplot(data=metric_data, x='Optimizers', y='Value', ax=ax, palette=color_map, hue='Optimizer', legend=False)
+        
+        ax.set_title(metric)
+        ax.set_xlabel('')
+        # ax.set_ylabel(metric)
         ax.grid(True, alpha=0.3)
+        
+    # set limits for y-axis
+    axes[0].set_ylim(0, df_long['QD Score'].max() * 1.1)
+    axes[1].set_ylim(0, df_long['Coverage'].max() * 1.1)
+    axes[2].set_ylim(0, df_long['RMSE'].max() * 1.1)
     
     plt.tight_layout()
-    plt.savefig(os.path.join(path_dir, "archive_stats_boxplot_seaborn.png"), dpi=300, bbox_inches='tight')
+    extension = 'pdf' if SAVE_IN_PDF else 'png'
+    plt.savefig(os.path.join(path_dir, f"archive_stats_boxplot_seaborn.{extension}"), dpi=300, bbox_inches='tight')
     plt.close()
     
-    
-    # Print summary statistics
-    print("Archive Statistics Summary:")
+    # Write summary statistics
     summary_stats = df_long.groupby('Optimizer')[['QD Score', 'Coverage', 'RMSE']].agg(['mean', 'std', 'median'])
-    print(summary_stats)
+    with open(os.path.join(path_dir, 'archive_stats_summary.txt'), 'w') as f:
+        f.write("Summary Statistics:\n")
+        f.write(summary_stats.to_string())
 
+#
 
 # -
 
@@ -879,36 +1213,54 @@ def main():
     print("-")
     print(logs_paths)
     
+    
+    # - WILCOXON TEST
+    # # Run your original function with modification
+    # stats_df, raw_data = compute_archives_stats_complete_new(archive_paths)
+
+    # # Perform Wilcoxon tests
+    # wilcoxon_results = perform_wilcoxon_tests(raw_data, alpha=0.05)
+
+    # # Print results
+    # print_wilcoxon_results(wilcoxon_results)
+
+    # # Create summary table
+    # summary_df = create_wilcoxon_summary_table(wilcoxon_results)
+    # # save to .csv file
+    # summary_df.to_csv(os.path.join(path_dir, 'wilcoxon_summary.csv'), index=False)
+    # print("\nWILCOXON TEST SUMMARY:")
+    # print(summary_df.to_string(index=False))
+    # -
+    
     # - Plot
     print("Plotting...")
     
-    # Archives
-    visualize_avg_archives(archive_paths, path_dir)
-
-    # Archives stats
-    plot_archives_stats_columns(archive_paths, path_dir)
-    plot_archives_stats_seaborn(archive_paths, path_dir)
-
-    # Fitness history
-    plot_fitness_history(logs_paths, path_dir, complete=True)
-    plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=False)
-    plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=True)
+    # # Archives
+    # visualize_avg_archives(archive_paths, path_dir)
+    # visualize_all_archives_per_optimizer(archive_paths, path_dir)
     
-    # Descriptors 
-    plot_descriptors(archive_paths, path_dir)
+    # # Archives stats
+    # plot_archives_stats_columns(archive_paths, path_dir)
+    # plot_archives_stats_seaborn(archive_paths, path_dir)
+
+    # # Fitness history
+    # plot_fitness_history(logs_paths, path_dir, complete=True, threshold=-110)
+    # plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=False)
+    # plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=True, threshold=-110)
     
-    # Hebbian parameters rules
-    plot_hebbian_distribution_per_params(archive_paths, path_dir, nodes)
-    plot_hebbian_distribution_per_nets(archive_paths, path_dir, nodes)
-    # plot_hebbian_distribution_per_params(archive_paths, path_dir, nodes, only_hidden=True)   # only hidden neurons
-    # plot_hebbian_distribution_per_nets(archive_paths, path_dir, nodes, only_hidden=True)     # only hidden neurons
+    # # Descriptors 
+    # plot_descriptors(archive_paths, path_dir)
+    
+    # # Hebbian parameters rules
+    # plot_hebbian_distribution_per_params(archive_paths, path_dir, nodes)
+    # plot_hebbian_distribution_per_nets(archive_paths, path_dir, nodes)
+    # # plot_hebbian_distribution_per_params(archive_paths, path_dir, nodes, only_hidden=True)   # only hidden neurons
+    # # plot_hebbian_distribution_per_nets(archive_paths, path_dir, nodes, only_hidden=True)     # only hidden neurons
     
     # PCA Rules 
     plot_combined_pca_rules(archive_paths, path_dir, nodes)
-    # plot_combined_pca_rules(archive_paths, path_dir, nodes, only_hidden=True)  # only hidden neurons
-    # plot_pca_by_net(archive_paths, path_dir, nodes)
-    # plot_pca_by_layer(archive_paths, path_dir, nodes)
-    
+    plot_combined_pca_rules(archive_paths, path_dir, nodes, only_hidden=True)  # only hidden neurons
+
     # 
     print("Plots saved to:", path_dir)
     
