@@ -1,16 +1,15 @@
-default:
-  iterations: 500
-  map_size: [10, 10]
-  pop_size: 100
-  bounds: 
+run:
+  dims: [10, 10]
+  ranges: 
     - [0.0, 1.0]
-    - [0.0, 0.5]
+    - [0.0, 1.0]
   sigma: 0.1
-  use_elitism: False
-  use_crossover: True
-  use_adaptive_mutation: False
-  use_prob_sampling: False
-  threshold: 0  
+  sigma0: 0.1
+  iterations: 300
+  batch_size: 100
+  num_emitters: 2
+  bounds: [-2.0, 2.0]
+  learning_rate: 0.01
   wandb: True
 
 tasks:
@@ -26,25 +25,3 @@ tasks:
     task: LunarLander-v3
     nodes: [8, 8, 4]
     threshold: 200
-    map_size: [15, 15]
-  B:
-    task: BipedalWalker-v3
-    nodes: [24, 8, 8,  4]
-    map_size: [10, 10]      
-    pop_size: 100
-    iterations: 1000           
-    sigma: 0.1             
-    bounds:                 
-      - [0.0, 1.0]
-      - [0.0, 0.35]
-  A:
-    task: Ant-v5
-    nodes: [105, 128, 64, 8]
-    bounds: 
-      - [0.0, 1.0]
-      - [0.0, 0.3]
-    map_size: [20, 20]      
-    iterations: 1000
-    pop_size: 100
-    max_steps: 2000
-    sigma: 0.1
