@@ -1,0 +1,50 @@
+default:
+  iterations: 500
+  map_size: [10, 10]
+  pop_size: 100
+  bounds: 
+    - [0.0, 1.0]
+    - [0.0, 0.5]
+  sigma: 0.1
+  use_elitism: False
+  use_crossover: True
+  use_adaptive_mutation: False
+  use_prob_sampling: False
+  threshold: 0  
+  wandb: True
+
+tasks:
+  C:
+    task: CartPole-v1
+    nodes: [4, 4, 2]
+    threshold: 500
+  M:
+    task: MountainCar-v0
+    nodes: [2, 8, 3]
+    threshold: -110
+  L:
+    task: LunarLander-v3
+    nodes: [8, 8, 4]
+    threshold: 200
+    map_size: [15, 15]
+  B:
+    task: BipedalWalker-v3
+    nodes: [24, 8, 8,  4]
+    map_size: [10, 10]      
+    pop_size: 100
+    iterations: 1000           
+    sigma: 0.1             
+    bounds:                 
+      - [0.0, 1.0]
+      - [0.0, 0.35]
+  A:
+    task: Ant-v5
+    nodes: [105, 128, 64, 8]
+    bounds: 
+      - [0.0, 1.0]
+      - [0.0, 0.3]
+    map_size: [20, 20]      
+    iterations: 1000
+    pop_size: 100
+    max_steps: 2000
+    sigma: 0.1
