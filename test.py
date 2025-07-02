@@ -116,9 +116,9 @@ def plot_single_archive(archive_path, title=None, cmap="viridis", save_path=None
     plt.close()
 
 
-# save_directory_names("expruns")
-plot_single_archive(
-    archive_path='expruns/CMAMAE_LunarLander-v3_4724/archive.pkl',
-    save_path="presentation_plot.pdf"
-)
+save_directory_names("expruns")
+# plot_single_archive(
+#     archive_path='expruns/CMAMAE_LunarLander-v3_4724/archive.pkl',
+#     save_path="presentation_plot.pdf"
+# )
 # screen_task("MountainCar-v0")

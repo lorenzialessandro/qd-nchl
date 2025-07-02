@@ -13,12 +13,8 @@ from network import NCHL, Neuron
 from pyribs import MAPElites, CMAME, CMAMAE
 from utils import *
 
-DEBUG = False  # Set to True for debugging purposes
-
 def evaluate(data):
     params = data[0]
-    # clamp parameters to the range [-1, 1] # TODO: change this
-    # params = np.clip(params, -1, 1)         # TODO: change this
     args = data[1]
     nodes = args["nodes"]
     task = args["task"]
@@ -27,7 +23,6 @@ def evaluate(data):
     agent = NCHL(nodes) # grad=False
     agent.set_params(params)
 
-       
     # Get environment action space information
     action_space = env.action_space
     is_continuous = isinstance(action_space, gym.spaces.Box)
@@ -46,7 +41,6 @@ def evaluate(data):
         agent.update_weights()
 
         if is_continuous:
-            # For continuous action spaces (like Ant-v5)
             # Actions are already in the range [-1, 1] due to tanh activation
             action = output.detach().cpu().numpy().flatten()
             
@@ -59,7 +53,6 @@ def evaluate(data):
                     # If output is smaller, pad with zeros (or another strategy)
                     action = np.pad(action, (0, action_space.shape[0] - len(action)), 'constant')
         else:
-            # For discrete action spaces (like CartPole, MountainCar, LunarLander)
             action = np.argmax(output.detach().cpu().numpy())
         
         state, reward, done, truncated, info = env.step(action)
@@ -127,23 +120,7 @@ def launcher(config):
         history_best_fitnesses.append(max(fitnesses))
         history_avg_fitnesses.append(np.mean(fitnesses))
         print(log)
-        logs.append(log)
-        
-        if DEBUG and i % 20 == 0:
-            optimizer.visualize_archive()
-            # Log best 3 elites measures
-            data = optimizer.archive.data()
-            objectives = data['objective']
-            best_indices = sorted(range(len(objectives)), key=lambda j: objectives[j], reverse=True)[:3]
-            logs_temp = []
-            for j, idx in enumerate(best_indices):
-                log_temp = f"Iteration {i} Elite {j+1}: Fitness: {objectives[idx]}, Measures: {data['measures'][idx]}"
-                logs_temp.append(log_temp)
-            with open(os.path.join(config["path_dir"], 'temp_best_elites.txt'), 'a+') as f:
-                for log_temp in logs_temp:
-                    f.write(log_temp + "\n") 
-                
-                
+        logs.append(log)     
         
     # Save archive
     optimizer.save_archive()
@@ -203,46 +180,10 @@ def launcher(config):
 def run(n_run=1):
     optimizers = ["MAPElites", "CMAME", "CMAMAE"]
     
-    seeds = [random.randint(0, 10000) for _ in range(n_run)]
-    
+    # CartPole-v1 
     config = {
-        "task": "MountainCar-v0",
-        "nodes": [2, 8, 3],
-        "dims": [10, 10],  
-        "ranges": [[0, 1], [0, 1]], 
-        "sigma": 0.1,
-        "iterations": 400, #300
-        "batch_size": 100, #100
-        "num_emitters": 2,
-        "wandb": False,
-    }
-    
-    agent = NCHL(config["nodes"])
-    config["solution_dim"] = agent.nparams
-    
-    for seed in seeds:
-        
-        config["seed"] = seed
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        
-        for optimizer in optimizers:
-            config["optimizer"] = optimizer
-            
-            if optimizer == "MAPElites":
-                config["ranges"] = [[0, 1], [0, 0.2]] # for MAPElites
-            else:
-                config["ranges"] = [[0, 1], [0, 1]]
-                
-            config["path_dir"] = f"eeexp/{config['optimizer']}_{config['task']}_{config['seed']}"
-            
-            print(f"Running with seed: {seed} and optimizer: {optimizer}")
-            launcher(config)
-            
-    config = {
-        "task": "LunarLander-v3",
-        "nodes": [8, 8, 4],
+        "task": "CartPole-v1",
+        "nodes": [4, 4, 2],
         "dims": [10, 10],  
         "ranges": [[0, 1], [0, 1]], 
         "sigma": 0.1,
@@ -264,48 +205,8 @@ def run(n_run=1):
         
         for optimizer in optimizers:
             config["optimizer"] = optimizer
-            
-            if optimizer == "MAPElites":
-                config["ranges"] = [[0, 1], [0, 0.2]] # for MAPElites
-            else:
-                config["ranges"] = [[0, 1], [0, 1]]
                 
-            config["path_dir"] = f"eeexp/{config['optimizer']}_{config['task']}_{config['seed']}"
-            
-            print(f"Running with seed: {seed} and optimizer: {optimizer}")
-            launcher(config)
-    
-    config = {
-        "task": "CartPole-v1",
-        "nodes": [4, 4, 2],
-        "dims": [10, 10],  
-        "ranges": [[0, 1], [0, 1]], 
-        "sigma": 0.1,
-        "iterations": 400, #300
-        "batch_size": 100, #100
-        "num_emitters": 2,
-        "wandb": False,
-    }
-    
-    agent = NCHL(config["nodes"])
-    config["solution_dim"] = agent.nparams
-    
-    for seed in seeds:
-        
-        config["seed"] = seed
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        
-        for optimizer in optimizers:
-            config["optimizer"] = optimizer
-            
-            if optimizer == "MAPElites":
-                config["ranges"] = [[0, 1], [0, 0.2]] # for MAPElites
-            else:
-                config["ranges"] = [[0, 1], [0, 1]]
-                
-            config["path_dir"] = f"eeexp/{config['optimizer']}_{config['task']}_{config['seed']}"
+            config["path_dir"] = f"expruns_map/{config['optimizer']}_{config['task']}_{config['seed']}"
             
             print(f"Running with seed: {seed} and optimizer: {optimizer}")
             launcher(config)

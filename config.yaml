@@ -10,8 +10,6 @@ run:
   num_emitters: 2
   bounds: [-2.0, 2.0]
   learning_rate: 0.01
-  wandb: True
-
 tasks:
   C:
     task: CartPole-v1
