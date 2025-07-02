@@ -1215,47 +1215,47 @@ def main():
     
     
     # - WILCOXON TEST
-    # # Run your original function with modification
-    # stats_df, raw_data = compute_archives_stats_complete_new(archive_paths)
+    # Run your original function with modification
+    stats_df, raw_data = compute_archives_stats_complete_new(archive_paths)
 
-    # # Perform Wilcoxon tests
-    # wilcoxon_results = perform_wilcoxon_tests(raw_data, alpha=0.05)
+    # Perform Wilcoxon tests
+    wilcoxon_results = perform_wilcoxon_tests(raw_data, alpha=0.05)
 
-    # # Print results
-    # print_wilcoxon_results(wilcoxon_results)
+    # Print results
+    print_wilcoxon_results(wilcoxon_results)
 
-    # # Create summary table
-    # summary_df = create_wilcoxon_summary_table(wilcoxon_results)
-    # # save to .csv file
-    # summary_df.to_csv(os.path.join(path_dir, 'wilcoxon_summary.csv'), index=False)
-    # print("\nWILCOXON TEST SUMMARY:")
-    # print(summary_df.to_string(index=False))
+    # Create summary table
+    summary_df = create_wilcoxon_summary_table(wilcoxon_results)
+    # save to .csv file
+    summary_df.to_csv(os.path.join(path_dir, 'wilcoxon_summary.csv'), index=False)
+    print("\nWILCOXON TEST SUMMARY:")
+    print(summary_df.to_string(index=False))
     # -
     
     # - Plot
     print("Plotting...")
     
-    # # Archives
-    # visualize_avg_archives(archive_paths, path_dir)
-    # visualize_all_archives_per_optimizer(archive_paths, path_dir)
+    # Archives
+    visualize_avg_archives(archive_paths, path_dir)
+    visualize_all_archives_per_optimizer(archive_paths, path_dir)
     
-    # # Archives stats
-    # plot_archives_stats_columns(archive_paths, path_dir)
-    # plot_archives_stats_seaborn(archive_paths, path_dir)
+    # Archives stats
+    plot_archives_stats_columns(archive_paths, path_dir)
+    plot_archives_stats_seaborn(archive_paths, path_dir)
 
-    # # Fitness history
-    # plot_fitness_history(logs_paths, path_dir, complete=True, threshold=-110)
-    # plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=False)
-    # plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=True, threshold=-110)
+    # Fitness history
+    plot_fitness_history(logs_paths, path_dir, complete=True, threshold=-110)
+    plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=False)
+    plot_fitness_history_compare(logs_paths, path_dir, complete=False, only_best=True, threshold=-110)
     
-    # # Descriptors 
-    # plot_descriptors(archive_paths, path_dir)
+    # Descriptors 
+    plot_descriptors(archive_paths, path_dir)
     
-    # # Hebbian parameters rules
-    # plot_hebbian_distribution_per_params(archive_paths, path_dir, nodes)
-    # plot_hebbian_distribution_per_nets(archive_paths, path_dir, nodes)
-    # # plot_hebbian_distribution_per_params(archive_paths, path_dir, nodes, only_hidden=True)   # only hidden neurons
-    # # plot_hebbian_distribution_per_nets(archive_paths, path_dir, nodes, only_hidden=True)     # only hidden neurons
+    # Hebbian parameters rules
+    plot_hebbian_distribution_per_params(archive_paths, path_dir, nodes)
+    plot_hebbian_distribution_per_nets(archive_paths, path_dir, nodes)
+    # plot_hebbian_distribution_per_params(archive_paths, path_dir, nodes, only_hidden=True)   # only hidden neurons
+    # plot_hebbian_distribution_per_nets(archive_paths, path_dir, nodes, only_hidden=True)     # only hidden neurons
     
     # PCA Rules 
     plot_combined_pca_rules(archive_paths, path_dir, nodes)
